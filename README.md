@@ -14,7 +14,7 @@ schema files are processed as follows:
  * the Thunderbird schema files are enriched by the api_documentation_url property
 
 For convenience, the Thunderbird team is providing the generated output in the
-[webext-schmemas](https://github.com/thunderbird/webext-schemas) repository.
+[webext-schemas](https://github.com/thunderbird/webext-schemas) repository.
 
 Install needed packages
 =======================
