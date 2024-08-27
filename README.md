@@ -20,7 +20,7 @@ Install needed packages
 =======================
 
 ```
-npm install comment-json fs-extra yargs path extract-zip @mdn/browser-compat-data
+npm install comment-json fs-extra yargs path extract-zip @thunderbirdops/webext-compat-data
 ```
 
 Usage
@@ -34,9 +34,6 @@ Options
 =======
 
 ```
-   --compat                   - Path to the thunderbird webextension compatibility
-                                data module (will become obsolete once released as
-                                an npm module).
    --manifest_version=number  - The requested manifest version of the schema
                                 files. Allowed values are "2" and "3".
    --output=path              - Path of a folder to store the processed schema

@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  * 
  * Author: John Bieling
- * Version: 1.1 (28.06.2024)
+ * Version: 1.2 (27.08.2024)
  */
 
 const path = require("path");
@@ -13,6 +13,7 @@ const https = require("https");
 const yargs = require("yargs");
 const jsonUtils = require("comment-json");
 const extract = require("extract-zip");
+const bcd =  require("@thunderbirdops/webext-compat-data");
 
 const HELP_SCREEN = `
 
@@ -21,9 +22,6 @@ Usage:
     node get_thunderbird_schema_files.js <options>
     
 Options:
-   --compat                   - Path to the thunderbird webextension compatibility
-                                data module (will become obsolete once released as
-                                an npm module).
    --manifest_version=number  - The requested manifest version of the schema
                                 files. Allowed values are "2" and "3".
    --output=path              - Path of a folder to store the processed schema
@@ -108,11 +106,9 @@ let schemas = [];
 let api_doc_branch = "latest";
 
 const args = yargs.argv;
-let bcd;
-if ((!args.source && !args.release) || !args.compat || !args.output || !args.manifest_version) {
+if ((!args.source && !args.release) || !args.output || !args.manifest_version) {
   console.log(HELP_SCREEN);
 } else {
-  bcd = require(args.compat);
   main();
 }
 
