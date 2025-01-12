@@ -7,13 +7,15 @@
  * Version: 1.2 (27.08.2024)
  */
 
-const path = require("path");
-const fs = require("fs-extra");
+const path = require("node:path");
+const fs = require("node:fs/promises");
+const { createWriteStream } = require("node:fs");
 const https = require("https");
 const yargs = require("yargs");
 const jsonUtils = require("comment-json");
 const extract = require("extract-zip");
 const bcd =  require("@thunderbirdops/webext-compat-data");
+const os = require("node:os");
 
 const HELP_SCREEN = `
 
@@ -99,7 +101,6 @@ const URL_REPLACEMENTS = {
     "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/User_actions",
 };
 
-const TEMP_DIR = "temp";
 const API_DOC_BASE_URL = "https://webextension-api.thunderbird.net/en";
 
 let schemas = [];
@@ -138,33 +139,33 @@ async function main() {
   }
 
   // Setup output directory.
-  if (!fs.existsSync(args.output)) {
-    fs.mkdirSync(args.output, { recursive: true });
-  }
+  await fs.rm(args.output, { recursive: true, force: true });
+  await fs.mkdir(args.output, { recursive: true });
+
   for (const file of await fs.readdir(args.output)) {
     await fs.unlink(path.join(args.output, file));
   }
 
   // Parse the toolkit schema files.
-  readSchemaFiles(
+  await readSchemaFiles(
     "firefox",
-    getJsonFiles(
+    await getJsonFiles(
       path.join(args.source, "toolkit", "components", "extensions", "schemas")
     )
   );
 
   // Parse the browser schema files.
-  readSchemaFiles(
+  await readSchemaFiles(
     "firefox",
-    getJsonFiles(
+    await getJsonFiles(
       path.join(args.source, "browser", "components", "extensions", "schemas")
     )
   );
 
   // Parse Thunderbird's own schema files.
-  readSchemaFiles(
+  await readSchemaFiles(
     "thunderbird",
-    getJsonFiles(
+    await getJsonFiles(
       path.join(
         args.source,
         "comm",
@@ -259,9 +260,12 @@ async function downloadSchemaFilesIntoTempFolder(release) {
     );
   }
 
-  if (!fs.existsSync(TEMP_DIR)) {
-    fs.mkdirSync(TEMP_DIR);
-  }
+  const tempFolder = await fs.mkdtemp(
+    path.join(os.tmpdir(), "webext-schemas-generator")
+  );
+  const TEMP_DIR = tempFolder;
+
+  await fs.mkdir(TEMP_DIR, { recursive: true });
 
   const folders = new Set();
   const directories = ["mail", "browser", "toolkit"];
@@ -298,22 +302,21 @@ async function downloadSchemaFilesIntoTempFolder(release) {
       mozillaFolder = folder;
     }
     if (parts[0] == "comm") {
-      fs.renameSync(path.join(TEMP_DIR, folder), path.join(TEMP_DIR, "comm"));
+      await fs.rename(path.join(TEMP_DIR, folder), path.join(TEMP_DIR, "comm"));
     }
   }
 
   // Check we have the folders we need.
-  if (
-    !fs.existsSync(path.join(TEMP_DIR, mozillaFolder)) ||
-    !fs.existsSync(path.join(TEMP_DIR, "comm"))
-  ) {
+  try {
+    await fs.access(path.join(TEMP_DIR, mozillaFolder));
+    await fs.access(path.join(TEMP_DIR, "comm"));
+  } catch (ex) {
     throw new Error("Download of schema files did not succeed!");
   }
 
-  await fs.move(
+  await fs.rename(
     path.join(TEMP_DIR, "comm"),
-    path.join(TEMP_DIR, mozillaFolder, "comm"),
-    { overwrite: true }
+    path.join(TEMP_DIR, mozillaFolder, "comm")
   );
   return path.join(TEMP_DIR, mozillaFolder);
 }
@@ -330,19 +333,18 @@ function mergeObjects(to, from) {
   return to;
 }
 
-function getJsonFiles(folderPath) {
-  return fs
-    .readdirSync(folderPath, { withFileTypes: true })
-    .filter(
-      item =>
-        !item.isDirectory() && path.extname(item.name).toLowerCase() === ".json"
-    );
+async function getJsonFiles(folderPath) {
+  const files = await fs.readdir(folderPath, { withFileTypes: true });
+  return files.filter(
+    (item) =>
+      !item.isDirectory() && path.extname(item.name).toLowerCase() === ".json"
+  );
 }
 
-function readSchemaFiles(owner, files) {
+async function readSchemaFiles(owner, files) {
   for (const file of files) {
     const json = jsonUtils.parse(
-      fs.readFileSync(path.join(file.path, file.name), "utf-8")
+      await fs.readFile(path.join(file.path, file.name), "utf-8")
     );
     schemas.push({
       file,
@@ -634,7 +636,7 @@ function sortKeys(x) {
  */
 async function writePrettyJSONFile(path, json) {
   try {
-    return await fs.outputFile(path, JSON.stringify(json, null, 4));
+    return await fs.writeFile(path, JSON.stringify(json, null, 4));
   } catch (err) {
     console.error("Error in writePrettyJSONFile()", path, err);
     throw err;
@@ -649,7 +651,7 @@ async function writePrettyJSONFile(path, json) {
  */
 function download(url, path) {
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(path);
+    const file = createWriteStream(path);
     https
       .get(url, response => {
         response.pipe(file);
