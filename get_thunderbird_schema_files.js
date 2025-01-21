@@ -1,8 +1,10 @@
+#!/usr/bin/env node
+
 /*
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
- * 
+ *
  * Author: John Bieling
  * Version: 1.2 (27.08.2024)
  */
@@ -14,7 +16,7 @@ const https = require("https");
 const yargs = require("yargs");
 const jsonUtils = require("comment-json");
 const extract = require("extract-zip");
-const bcd =  require("@thunderbirdops/webext-compat-data");
+const bcd = require("@thunderbirdops/webext-compat-data");
 const os = require("node:os");
 
 const HELP_SCREEN = `
@@ -135,7 +137,9 @@ async function main() {
     api_doc_branch = `beta-mv${args.manifest_version}`;
   }
   if (args.release.startsWith("esr")) {
-    api_doc_branch = `${args.release.substring(3)}-esr-mv${args.manifest_version}`;
+    api_doc_branch = `${args.release.substring(3)}-esr-mv${
+      args.manifest_version
+    }`;
   }
 
   // Setup output directory.
@@ -180,44 +184,64 @@ async function main() {
   // An API should list `version_added: false` to indicate no support. A missing
   // __compat entry indicates default behavior = support.
   const BCD_SUPPORTED_APIS = Object.keys(bcd.webextensions.api).filter(
-    e => bcd.webextensions.api[e]?.__compat?.support?.thunderbird?.version_added !== false
+    (e) =>
+      bcd.webextensions.api[e]?.__compat?.support?.thunderbird
+        ?.version_added !== false
   );
-  const BCD_SUPPORTED_MANIFESTS = Object.keys(bcd.webextensions.manifest).filter(
-    e => bcd.webextensions.manifest[e]?.__compat?.support?.thunderbird?.version_added !== false
+  const BCD_SUPPORTED_MANIFESTS = Object.keys(
+    bcd.webextensions.manifest
+  ).filter(
+    (e) =>
+      bcd.webextensions.manifest[e]?.__compat?.support?.thunderbird
+        ?.version_added !== false
   );
   const THUNDERBIRD_APIS = schemas
-    .filter(e => e.owner == "thunderbird")
-    .map(e => e.json.map(n => n.namespace)).flat()
-    .filter(e => e != "manifest");
+    .filter((e) => e.owner == "thunderbird")
+    .map((e) => e.json.map((n) => n.namespace))
+    .flat()
+    .filter((e) => e != "manifest");
 
   // Filter out unsupported.
-  schemas = schemas.flatMap(schema => {
+  schemas = schemas.flatMap((schema) => {
     // Keep Thunderbird APIs.
     if (schema.owner == "thunderbird") {
       return [schema];
     }
     // Remove re-implemented
-    if (schema.json.map(e => e.namespace).some(e => THUNDERBIRD_APIS.includes(e))) {
+    if (
+      schema.json
+        .map((e) => e.namespace)
+        .some((e) => THUNDERBIRD_APIS.includes(e))
+    ) {
       return [];
     }
     // Remove unsupported.
-    if (!schema.json.map(e => e.namespace).some(e => BCD_SUPPORTED_APIS.includes(e))) {
+    if (
+      !schema.json
+        .map((e) => e.namespace)
+        .some((e) => BCD_SUPPORTED_APIS.includes(e))
+    ) {
       // Before removing this file, check if it extends the global manifest with
       // a supported WebExtensionManifest entry.
       let manifestTypes = schema.json
-        .filter(e => e.namespace == "manifest")
-        .map(e => e.types).flat()
-      if(manifestTypes
-        .filter(e => e.$extend == "WebExtensionManifest")
-        .map(e => Object.keys(e.properties)).flat()
-        .some(e => BCD_SUPPORTED_MANIFESTS.includes(e))
+        .filter((e) => e.namespace == "manifest")
+        .map((e) => e.types)
+        .flat();
+      if (
+        manifestTypes
+          .filter((e) => e.$extend == "WebExtensionManifest")
+          .map((e) => Object.keys(e.properties))
+          .flat()
+          .some((e) => BCD_SUPPORTED_MANIFESTS.includes(e))
       ) {
         return [schema];
       }
       // Also check, if it defines either the global WebExtensionManifest or
       // the global ManifestBase entry.
-      if(manifestTypes
-        .some(e => ["ManifestBase", "WebExtensionManifest"].includes(e.id))
+      if (
+        manifestTypes.some((e) =>
+          ["ManifestBase", "WebExtensionManifest"].includes(e.id)
+        )
       ) {
         return [schema];
       }
@@ -275,7 +299,7 @@ async function downloadSchemaFilesIntoTempFolder(release) {
     console.log(
       ` [${i + 1}/${
         directories.length
-      }] Downloading ${release}-${folderName}.zip from ${release} ...`
+      }] Downloading ${release}-${folderName}.zip from ${release} to ${TEMP_DIR} ...`
     );
     try {
       await download(getHgZipPath(release, folderName), fileName);
@@ -289,7 +313,7 @@ async function downloadSchemaFilesIntoTempFolder(release) {
     );
     await extract(path.resolve(fileName), {
       dir: path.resolve(TEMP_DIR),
-      onEntry: entry => folders.add(entry.fileName.split("/")[0]),
+      onEntry: (entry) => folders.add(entry.fileName.split("/")[0]),
     });
     await fs.unlink(fileName);
   }
@@ -297,7 +321,7 @@ async function downloadSchemaFilesIntoTempFolder(release) {
   // Renaming folders and moving /comm inside of /mozilla.
   let mozillaFolder;
   for (const folder of folders) {
-    const parts = folder.split("-").map(e => e.toLowerCase());
+    const parts = folder.split("-").map((e) => e.toLowerCase());
     if (parts[0] == "mozilla") {
       mozillaFolder = folder;
     }
@@ -479,13 +503,15 @@ function processSchema(
   if (Array.isArray(value)) {
     return value
       .filter(
-        v =>
+        (v) =>
           (!v.min_manifest_version ||
             v.min_manifest_version <= requested_manifest_version) &&
           (!v.max_manifest_version ||
             v.max_manifest_version >= requested_manifest_version)
       )
-      .map(e => processSchema(e, e.name, requested_manifest_version, owner, fullPath));
+      .map((e) =>
+        processSchema(e, e.name, requested_manifest_version, owner, fullPath)
+      );
   }
 
   // Looks like value is an object. Find out where we are to be able to retrieve
@@ -507,7 +533,7 @@ function processSchema(
       addCompatData(value, owner, {
         namespaceName: namespace,
         entryName: name,
-      })
+      });
     }
 
     // Check if we are at the parameters level.
@@ -520,100 +546,105 @@ function processSchema(
       addCompatData(value, owner, {
         namespaceName: namespace,
         entryName: name,
-        paramName: parameter
-      })
+        paramName: parameter,
+      });
     }
   } else {
     // Top-level properties are not an array, but an object with the property
-    // names as keys. 
+    // names as keys.
     const parts = fullPath.split(".");
     if (parts.length == 2 && parts[1] == "properties") {
       for (let key of Object.keys(value)) {
-       value[key] = processSchema(value[key], key, requested_manifest_version, owner, fullPath)
+        value[key] = processSchema(
+          value[key],
+          key,
+          requested_manifest_version,
+          owner,
+          fullPath
+        );
       }
       return value;
     }
   }
 
-  return Object.keys(value)
-    .reduce((o, key) => {
-      let v = value[key];
-      const v_orig_length = v.length;
-      if (
-        (!v.min_manifest_version ||
-          v.min_manifest_version <= requested_manifest_version) &&
-        (!v.max_manifest_version ||
-          v.max_manifest_version >= requested_manifest_version)
-      ) {
-        v = processSchema(
-          value[key],
-          value[key].name,
-          requested_manifest_version,
-          owner,
-          `${fullPath}.${key}`
-        );
-        switch (key) {
-          case "min_manifest_version":
-          case "max_manifest_version":
-            // Do not include manifest limits in clean per-single-manifest schema
-            // files.
-            break;
-          case "choices":
-            // Merge enums if a choice is all but enums.
-            if (v_orig_length != v.length && v.every(e => !!e.enum)) {
-              // Merge into first entry.
-              v[0].enum = v
-                .reduce((enums, entry) => {
-                  enums.push(...entry.enum);
-                  return enums;
-                }, [])
-                .sort();
-              v = [v[0]];
-            }
+  return Object.keys(value).reduce((o, key) => {
+    let v = value[key];
+    const v_orig_length = v.length;
+    if (
+      (!v.min_manifest_version ||
+        v.min_manifest_version <= requested_manifest_version) &&
+      (!v.max_manifest_version ||
+        v.max_manifest_version >= requested_manifest_version)
+    ) {
+      v = processSchema(
+        value[key],
+        value[key].name,
+        requested_manifest_version,
+        owner,
+        `${fullPath}.${key}`
+      );
+      switch (key) {
+        case "min_manifest_version":
+        case "max_manifest_version":
+          // Do not include manifest limits in clean per-single-manifest schema
+          // files.
+          break;
+        case "choices":
+          // Merge enums if a choice is all but enums.
+          if (v_orig_length != v.length && v.every((e) => !!e.enum)) {
+            // Merge into first entry.
+            v[0].enum = v
+              .reduce((enums, entry) => {
+                enums.push(...entry.enum);
+                return enums;
+              }, [])
+              .sort();
+            v = [v[0]];
+          }
 
-            // If the manifest_version filter reduced the choice entries and we
-            // are left with only one, remove the choice.
-            if (v_orig_length != v.length && v.length == 1) {
-              Object.assign(o, v[0]);
-            } else {
-              o[key] = v;
-            }
-            break;
-          case "description":
-          case "deprecated":
-            if (typeof v === "string") {
-              // Newer schema files use the Firefox notation directly, but older
-              // ones may still use the deprecated reStructuredText notations.
-              // Fix any remaining deprecated notation.
-              v = v.replace(/``(.+?)``/g, "<val>$1</val>");
-              v = v.replace(/:doc:`(.*?)`/g, "$(doc:$1)");
-              v = v.replace(/:ref:`(.*?)`/g, "$(ref:$1)");
-              v = v.replace(
-                /:permission:`(.*?)`/g,
-                "<permission>$1</permission>"
-              );
-
-              // Replace URLs.
-              v = v.replace(/`(.*?) <(.*?)>`__/g, "<a href='$2'>$1</a>");
-              v = v.replace(/href='url-.*?'/g, match => {
-                const placeholder = match.slice(6, -1);
-                if (URL_REPLACEMENTS[placeholder]) {
-                  return `href='${URL_REPLACEMENTS[placeholder]}'`;
-                }
-                console.log(`Unknown url placeholder: ${placeholder}`);
-                return match;
-              });
-
-              // Replace single back ticks.
-              v = v.replace(/`(.+?)`/g, "<val>$1</val>");
-            }
-          default:
+          // If the manifest_version filter reduced the choice entries and we
+          // are left with only one, remove the choice.
+          if (v_orig_length != v.length && v.length == 1) {
+            Object.assign(o, v[0]);
+          } else {
             o[key] = v;
-        }
-      }
+          }
+          break;
+        case "description":
+        case "deprecated":
+          if (typeof v === "string") {
+            // Newer schema files use the Firefox notation directly, but older
+            // ones may still use the deprecated reStructuredText notations.
+            // Fix any remaining deprecated notation.
+            v = v.replace(/``(.+?)``/g, "<val>$1</val>");
+            v = v.replace(/:doc:`(.*?)`/g, "$(doc:$1)");
+            v = v.replace(/:ref:`(.*?)`/g, "$(ref:$1)");
+            v = v.replace(
+              /:permission:`(.*?)`/g,
+              "<permission>$1</permission>"
+            );
 
-      return o;
-    }, {});
+            // Replace URLs.
+            v = v.replace(/`(.*?) <(.*?)>`__/g, "<a href='$2'>$1</a>");
+            v = v.replace(/href='url-.*?'/g, (match) => {
+              const placeholder = match.slice(6, -1);
+              if (URL_REPLACEMENTS[placeholder]) {
+                return `href='${URL_REPLACEMENTS[placeholder]}'`;
+              }
+              console.log(`Unknown url placeholder: ${placeholder}`);
+              return match;
+            });
+
+            // Replace single back ticks.
+            v = v.replace(/`(.+?)`/g, "<val>$1</val>");
+          }
+        default:
+          o[key] = v;
+      }
+    }
+
+    return o;
+  }, {});
 }
 
 function sortKeys(x) {
@@ -653,7 +684,7 @@ function download(url, path) {
   return new Promise((resolve, reject) => {
     const file = createWriteStream(path);
     https
-      .get(url, response => {
+      .get(url, (response) => {
         response.pipe(file);
         file.on("finish", () => {
           file.close(() => {
@@ -661,18 +692,18 @@ function download(url, path) {
           });
         });
       })
-      .on("error", err => {
+      .on("error", (err) => {
         reject(err);
       });
   });
 }
 
 function addCompatData(value, owner, pathData) {
-  const {namespaceName, entryName, paramName, propertyName} = pathData;
+  const { namespaceName, entryName, paramName, propertyName } = pathData;
   let addApiDoc = true;
-  let entry = 
+  let entry =
     bcd.webextensions.api[namespaceName] &&
-    bcd.webextensions.api[namespaceName][entryName]
+    bcd.webextensions.api[namespaceName][entryName];
 
   if (entry && paramName) {
     entry = entry[paramName];
@@ -685,7 +716,7 @@ function addCompatData(value, owner, pathData) {
 
   let compatData = entry.__compat;
   if (!compatData) {
-    return
+    return;
   }
 
   if (compatData?.mdn_url) {
@@ -698,7 +729,9 @@ function addCompatData(value, owner, pathData) {
     // Generate Thunderbird API_DOC_URL.
     const anchorParts = [entryName];
     if (value.parameters) {
-      anchorParts.push(...value.parameters.map(e => e.name).filter(e => e != "callback"))
+      anchorParts.push(
+        ...value.parameters.map((e) => e.name).filter((e) => e != "callback")
+      );
     }
     const anchor = anchorParts.join("-").toLowerCase();
     value.api_documentation_url = `${API_DOC_BASE_URL}/${api_doc_branch}/${namespaceName}.html#${anchor}`;
