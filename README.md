@@ -20,7 +20,7 @@ Install needed packages
 =======================
 
 ```
-npm install comment-json fs-extra yargs path extract-zip @thunderbirdops/webext-compat-data
+npm install
 ```
 
 Usage
@@ -45,8 +45,6 @@ Options
                                 or "esr115". Either --release or --source has to
                                 be specified.
    --source=path              - Path to a local checkout of a mozilla repository
-                                with a matching /comm directory. The mozilla-*
-                                folder created in the temporary download folder
-                                after using the --release option will work also.
-                                Either --release or --source has to be specified.
+                                with a matching /comm directory. Either --release
+                                or --source has to be specified.
 ```
