@@ -18,7 +18,6 @@ const extract = require("extract-zip");
 const bcd = require("@thunderbirdops/webext-compat-data");
 const os = require("node:os");
 
-// TODO: No longer mention the temp download
 const HELP_SCREEN = `
 
 Usage:
@@ -37,10 +36,8 @@ Options:
                                 or "esr115". Either --release or --source has to
                                 be specified.
    --source=path              - Path to a local checkout of a mozilla repository
-                                with a matching /comm directory. The mozilla-*
-                                folder created in the temporary download folder
-                                after using the --release option will work also.
-                                Either --release or --source has to be specified.
+                                with a matching /comm directory. Either --release
+                                or --source has to be specified.
 `;
 
 // URL placeholder and their correct value. These are replaced if found inside
@@ -106,6 +103,10 @@ const URL_REPLACEMENTS = {
 
 const API_DOC_BASE_URL = "https://webextension-api.thunderbird.net/en";
 const HG_URL = "https://hg-edge.mozilla.org";
+const LOCALE_FILES = [
+  `toolkit/locales/en-US/toolkit/global/extensionPermissions.ftl`,
+  `comm/mail/locales/en-US/messenger/extensionPermissions.ftl`,
+];
 
 let TEMP_DIR;
 let schemas = [];
@@ -134,7 +135,7 @@ async function main() {
 
   // Download schema files, if requested.
   if (args.release) {
-    args.source = await downloadSchemaFilesIntoTempFolder(args.release);
+    args.source = await downloadFilesFromMozilla(args.release);
   } else {
     // Set the release based on the provided folder name.
     args.release = path.basename(args.source).split("-")[1];
@@ -145,9 +146,8 @@ async function main() {
     api_doc_branch = `beta-mv${args.manifest_version}`;
   }
   if (args.release.startsWith("esr")) {
-    api_doc_branch = `${args.release.substring(3)}-esr-mv${
-      args.manifest_version
-    }`;
+    api_doc_branch = `${args.release.substring(3)}-esr-mv${args.manifest_version
+      }`;
   }
   if (args.release == "release") {
     api_doc_branch = `release-mv${args.manifest_version}`;
@@ -158,7 +158,7 @@ async function main() {
   await fs.mkdir(args.output, { recursive: true });
 
   // Extract and save the locale strings for permissions.
-  const permissionStrings = await extractPermissionStrings(["toolkit", "mail"]);
+  const permissionStrings = await extractPermissionStrings(args.source);
   const permissionStringsFile = path.join(args.output, "permissions.ftl");
   await fs.writeFile(permissionStringsFile, permissionStrings.join('\n') + '\n', 'utf-8');
 
@@ -298,17 +298,17 @@ async function main() {
  * in mail/. This function extracts all string definitions with the prefix
  * "webext-perms-description-".
  * 
- * @param {string[]} folders - the folders to check for permission fluent files,
- *    should be toolkit and mail
+ * @param {string} sourcefolders - the source folder as specified by --source
  * @returns {string[]} permission strings
  */
-async function extractPermissionStrings(folders) {
+async function extractPermissionStrings(sourceFolder) {
   const permissionStrings = [];
   const prefix = 'webext-perms-description-';
 
-  for (let folder of folders) {
-    const filePath = path.join(TEMP_DIR, `${args.release}-${folder}-permissions.ftl`);
-    const content = await fs.readFile(filePath, 'utf-8');
+  for (let localeFile of LOCALE_FILES) {
+    const parts = localeFile.split("/");
+    const localeFilePath = path.join(sourceFolder, ...parts);
+    const content = await fs.readFile(localeFilePath, 'utf-8')
     const lines = content.split('\n');
     const matchedLines = lines
       .filter(line => line.startsWith(prefix))
@@ -325,10 +325,10 @@ async function extractPermissionStrings(folders) {
   return permissionStrings;
 }
 
-async function downloadSchemaFilesIntoTempFolder(release) {
+async function downloadFilesFromMozilla(release) {
   if (!release) {
     throw new Error(
-      "Missing release parameter in downloadSchemaFilesIntoTempFolder()"
+      "Missing release parameter in downloadFilesFromMozilla()"
     );
   }
 
@@ -337,18 +337,12 @@ async function downloadSchemaFilesIntoTempFolder(release) {
   for (let i = 0; i < directories.length; i++) {
     const folderName = directories[i];
     const zipFileName = path.join(TEMP_DIR, `${release}-${folderName}.zip`);
-    const localeFileName = path.join(TEMP_DIR, `${release}-${folderName}-permissions.ftl`);
     console.log(
-      ` [${i + 1}/${
-        directories.length
+      ` [${i + 1}/${directories.length
       }] Downloading ${release}-${folderName}.zip from ${release} to ${TEMP_DIR} ...`
     );
     try {
       await download(getHgSchemasZipPath(release, folderName), zipFileName);
-      // Skip browser locale file, which does not exist.
-      if (["mail", "toolkit"].includes(folderName)) {
-        await download(getHgLocaleFilePath(release, folderName), localeFileName);
-      }
     } catch (ex) {
       throw new Error("Download failed, try again later");
     }
@@ -387,6 +381,15 @@ async function downloadSchemaFilesIntoTempFolder(release) {
     path.join(TEMP_DIR, "comm"),
     path.join(TEMP_DIR, mozillaFolder, "comm")
   );
+
+  // Download locale files.
+  for (let localeFile of LOCALE_FILES) {
+    const hgFilePath = getHgFilePath(release, localeFile);
+    const parts = localeFile.split("/");
+    await fs.mkdir(path.join(TEMP_DIR, mozillaFolder, ...parts.slice(0, -1)), { recursive: true });
+    await download(hgFilePath, path.join(TEMP_DIR, mozillaFolder, ...parts));
+  }
+
   return path.join(TEMP_DIR, mozillaFolder);
 }
 
@@ -438,20 +441,21 @@ function getHgSchemasZipPath(release, directory) {
 }
 
 /**
- * Get URL to download locale files from hg.mozilla.org.
+ * Get URL to download a raw file from hg.mozilla.org.
  *
  * @param {string} release - The release, for example central, beta, esr115, ...
- * @param {string} directory - The directory, one of toolkit or mail.
+ * @param {string} path - The path of the file.
  *
- * @returns {string} URL pointing to raw file download of extension permission
- *   locale files on hg.mozilla.org.
+ * @returns {string} URL pointing to the raw file download from hg.mozilla.org.
  */
-// TODO: Make it download to the same location as a local checkout.
-function getHgLocaleFilePath(release, directory) {
+function getHgFilePath(release, path) {
   const root = release.endsWith("central") ? "" : "releases/";
-  const branch = directory == "mail" ? "comm-" : "mozilla-";
-  const path = directory == "mail" ? "messenger" : "toolkit/global"
-  return `${HG_URL}/${root}${branch}${release}/raw-file/tip/${directory}/locales/en-US/${path}/extensionPermissions.ftl`;
+  const branch = path.startsWith("comm") ? "comm-" : "mozilla-";
+  if (branch == "comm-") {
+    // Files in comm/ are directly on /
+    path = path.split("/").slice(1).join("/")
+  }
+  return `${HG_URL}/${root}${branch}${release}/raw-file/tip/${path}`;
 }
 
 /**
