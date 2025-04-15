@@ -15,6 +15,7 @@ const jsonUtils = require("comment-json");
 const extract = require("extract-zip");
 const bcd =  require("@thunderbirdops/webext-compat-data");
 
+const HG_URL = "https://hg-edge.mozilla.org";
 const HELP_SCREEN = `
 
 Usage:
@@ -363,7 +364,7 @@ function readSchemaFiles(owner, files) {
 function getHgZipPath(release, directory) {
   const root = release.endsWith("central") ? "" : "releases/";
   const branch = directory == "mail" ? "comm-" : "mozilla-";
-  return `https://hg.mozilla.org/${root}${branch}${release}/archive/tip.zip/${directory}/components/extensions/schemas`;
+  return `${HG_URL}/${root}${branch}${release}/archive/tip.zip/${directory}/components/extensions/schemas`;
 }
 
 /**
@@ -647,7 +648,8 @@ async function writePrettyJSONFile(path, json) {
  * @param {string} url - The URL to download.
  * @param {string} path - The path to write the downloaded file to.
  */
-function download(url, path) {
+async function download(url, path) {
+  await new Promise(resolve => setTimeout(resolve, 2500));
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(path);
     https
