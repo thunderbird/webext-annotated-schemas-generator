@@ -42,6 +42,7 @@ Options:
 
 // URL placeholder and their correct value. These are replaced if found inside
 // an <a> tag in descriptions.
+// TODO: Move into config file.
 const URL_REPLACEMENTS = {
   "url-binary-string":
     "https://developer.mozilla.org/en-US/docs/Web/API/DOMString/Binary",
@@ -136,6 +137,9 @@ async function main() {
   }
   if (args.release.startsWith("esr")) {
     api_doc_branch = `${args.release.substring(3)}-esr-mv${args.manifest_version}`;
+  }
+  if (args.release == "release") {
+    api_doc_branch = `release-mv${args.manifest_version}`;
   }
 
   // Setup output directory.
