@@ -6,7 +6,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
  * Author: John Bieling
- * Version: 1.2 (27.08.2024)
  */
 
 const path = require("node:path");
@@ -19,7 +18,7 @@ const extract = require("extract-zip");
 const bcd = require("@thunderbirdops/webext-compat-data");
 const os = require("node:os");
 
-const HG_URL = "https://hg-edge.mozilla.org";
+// TODO: No longer mention the temp download
 const HELP_SCREEN = `
 
 Usage:
@@ -106,7 +105,9 @@ const URL_REPLACEMENTS = {
 };
 
 const API_DOC_BASE_URL = "https://webextension-api.thunderbird.net/en";
+const HG_URL = "https://hg-edge.mozilla.org";
 
+let TEMP_DIR;
 let schemas = [];
 let api_doc_branch = "latest";
 
@@ -125,6 +126,12 @@ async function main() {
     console.log(`Unsupported Manifest Version: <${args.manifest_version}>`);
     return;
   }
+
+  const tempFolder = await fs.mkdtemp(
+    path.join(os.tmpdir(), "webext-schemas-generator")
+  );
+  await fs.mkdir(tempFolder, { recursive: true });
+  TEMP_DIR = tempFolder;
 
   // Download schema files, if requested.
   if (args.release) {
@@ -148,15 +155,13 @@ async function main() {
   }
 
   // Setup output directory.
-  if (fs.existsSync(args.output)) {
-    await fs.rm(args.output, { recursive: true, force: true });
-  }
+  await fs.rm(args.output, { recursive: true, force: true });
   await fs.mkdir(args.output, { recursive: true });
 
   // Extract and save the locale strings for permissions.
   const permissionStrings = await extractPermissionStrings(["toolkit", "mail"]);
   const permissionStringsFile = path.join(args.output, "permissions.ftl");
-  fs.writeFileSync(permissionStringsFile, permissionStrings.join('\n') + '\n', 'utf-8');
+  await fs.writeFile(permissionStringsFile, permissionStrings.join('\n') + '\n', 'utf-8');
 
   // Parse the toolkit schema files.
   await readSchemaFiles(
@@ -283,7 +288,7 @@ async function main() {
   }
 
   // Cleanup.
-  fs.rmSync(TEMP_DIR, { recursive: true, force: true });
+  await fs.rm(TEMP_DIR, { recursive: true, force: true });
 }
 
 // -----------------------------------------------------------------------------
@@ -304,7 +309,7 @@ async function extractPermissionStrings(folders) {
 
   for (let folder of folders) {
     const filePath = path.join(TEMP_DIR, `${args.release}-${folder}-permissions.ftl`);
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = await fs.readFile(filePath, 'utf-8');
     const lines = content.split('\n');
     const matchedLines = lines
       .filter(line => line.startsWith(prefix))
@@ -327,13 +332,6 @@ async function downloadSchemaFilesIntoTempFolder(release) {
       "Missing release parameter in downloadSchemaFilesIntoTempFolder()"
     );
   }
-
-  const tempFolder = await fs.mkdtemp(
-    path.join(os.tmpdir(), "webext-schemas-generator")
-  );
-  const TEMP_DIR = tempFolder;
-  await fs.mkdir(TEMP_DIR, { recursive: true });
-
 
   const folders = new Set();
   const directories = ["mail", "browser", "toolkit"];
@@ -449,6 +447,7 @@ function getHgSchemasZipPath(release, directory) {
  * @returns {string} URL pointing to raw file download of extension permission
  *   locale files on hg.mozilla.org.
  */
+// TODO: Make it download to the same location as a local checkout.
 function getHgLocaleFilePath(release, directory) {
   const root = release.endsWith("central") ? "" : "releases/";
   const branch = directory == "mail" ? "comm-" : "mozilla-";
