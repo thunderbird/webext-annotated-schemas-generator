@@ -13,8 +13,9 @@ const https = require("https");
 const yargs = require("yargs");
 const jsonUtils = require("comment-json");
 const extract = require("extract-zip");
-const bcd =  require("@thunderbirdops/webext-compat-data");
+const bcd = require("@thunderbirdops/webext-compat-data");
 
+const HG_URL = "https://hg-edge.mozilla.org";
 const HELP_SCREEN = `
 
 Usage:
@@ -41,6 +42,7 @@ Options:
 
 // URL placeholder and their correct value. These are replaced if found inside
 // an <a> tag in descriptions.
+// TODO: Move into config file.
 const URL_REPLACEMENTS = {
   "url-binary-string":
     "https://developer.mozilla.org/en-US/docs/Web/API/DOMString/Binary",
@@ -136,14 +138,20 @@ async function main() {
   if (args.release.startsWith("esr")) {
     api_doc_branch = `${args.release.substring(3)}-esr-mv${args.manifest_version}`;
   }
+  if (args.release == "release") {
+    api_doc_branch = `release-mv${args.manifest_version}`;
+  }
 
   // Setup output directory.
-  if (!fs.existsSync(args.output)) {
-    fs.mkdirSync(args.output, { recursive: true });
+  if (fs.existsSync(args.output)) {
+    fs.rmSync(args.output, { recursive: true, force: true });
   }
-  for (const file of await fs.readdir(args.output)) {
-    await fs.unlink(path.join(args.output, file));
-  }
+  fs.mkdirSync(args.output, { recursive: true });
+
+  // Extract and save the locale strings for permissions.
+  const permissionStrings = await extractPermissionStrings(["toolkit", "mail"]);
+  const permissionStringsFile = path.join(args.output, "permissions.ftl");
+  fs.writeFileSync(permissionStringsFile, permissionStrings.join('\n') + '\n', 'utf-8');
 
   // Parse the toolkit schema files.
   readSchemaFiles(
@@ -206,7 +214,7 @@ async function main() {
       let manifestTypes = schema.json
         .filter(e => e.namespace == "manifest")
         .map(e => e.types).flat()
-      if(manifestTypes
+      if (manifestTypes
         .filter(e => e.$extend == "WebExtensionManifest")
         .map(e => Object.keys(e.properties)).flat()
         .some(e => BCD_SUPPORTED_MANIFESTS.includes(e))
@@ -215,7 +223,7 @@ async function main() {
       }
       // Also check, if it defines either the global WebExtensionManifest or
       // the global ManifestBase entry.
-      if(manifestTypes
+      if (manifestTypes
         .some(e => ["ManifestBase", "WebExtensionManifest"].includes(e.id))
       ) {
         return [schema];
@@ -248,9 +256,45 @@ async function main() {
       sortKeys(schema.json)
     );
   }
+
+  // Cleanup.
+  fs.rmSync(TEMP_DIR, { recursive: true, force: true });
 }
 
 // -----------------------------------------------------------------------------
+
+
+/**
+ * The permission strings are stored in two fluent files, one in toolkit/ and one
+ * in mail/. This function extracts all string definitions with the prefix
+ * "webext-perms-description-".
+ * 
+ * @param {string[]} folders - the folders to check for permission fluent files,
+ *    should be toolkit and mail
+ * @returns {string[]} permission strings
+ */
+async function extractPermissionStrings(folders) {
+  const permissionStrings = [];
+  const prefix = 'webext-perms-description-';
+
+  for (let folder of folders) {
+    const filePath = path.join(TEMP_DIR, `${args.release}-${folder}-permissions.ftl`);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n');
+    const matchedLines = lines
+      .filter(line => line.startsWith(prefix))
+      .map(line => {
+        // Remove numbers appended to the keys, which sometimes are needed to
+        // deal with locale updates.
+        const [key, ...rest] = line.split('=');
+        let sanitizedKey = key.replace(/[\d\s]+$/, '');
+        let sanitizedValue = rest.join('=').trim().replaceAll("{ -brand-short-name }", "Thunderbird")
+        return `${sanitizedKey} = ${sanitizedValue}`;
+      });
+    permissionStrings.push(...matchedLines);
+  }
+  return permissionStrings;
+}
 
 async function downloadSchemaFilesIntoTempFolder(release) {
   if (!release) {
@@ -259,35 +303,39 @@ async function downloadSchemaFilesIntoTempFolder(release) {
     );
   }
 
-  if (!fs.existsSync(TEMP_DIR)) {
-    fs.mkdirSync(TEMP_DIR);
+  if (fs.existsSync(TEMP_DIR)) {
+    fs.rmSync(TEMP_DIR, { recursive: true, force: true });
   }
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
 
   const folders = new Set();
   const directories = ["mail", "browser", "toolkit"];
   for (let i = 0; i < directories.length; i++) {
     const folderName = directories[i];
-    const fileName = path.join(TEMP_DIR, `${release}-${folderName}.zip`);
+    const zipFileName = path.join(TEMP_DIR, `${release}-${folderName}.zip`);
+    const localeFileName = path.join(TEMP_DIR, `${release}-${folderName}-permissions.ftl`);
     console.log(
-      ` [${i + 1}/${
-        directories.length
+      ` [${i + 1}/${directories.length
       }] Downloading ${release}-${folderName}.zip from ${release} ...`
     );
     try {
-      await download(getHgZipPath(release, folderName), fileName);
+      await download(getHgSchemasZipPath(release, folderName), zipFileName);
+      // Skip browser locale file, which does not exist.
+      if (["mail", "toolkit"].includes(folderName)) {
+        await download(getHgLocaleFilePath(release, folderName), localeFileName);
+      }
     } catch (ex) {
       throw new Error("Download failed, try again later");
     }
     console.log(
-      ` [${i + 1}/${
-        directories.length
+      ` [${i + 1}/${directories.length
       }] Unpacking ${release}-${folderName}.zip ...`
     );
-    await extract(path.resolve(fileName), {
+    await extract(path.resolve(zipFileName), {
       dir: path.resolve(TEMP_DIR),
       onEntry: entry => folders.add(entry.fileName.split("/")[0]),
     });
-    await fs.unlink(fileName);
+    await fs.unlink(zipFileName);
   }
 
   // Renaming folders and moving /comm inside of /mozilla.
@@ -360,10 +408,26 @@ function readSchemaFiles(owner, files) {
  *
  * @returns {string} URL pointing to zip download of schema files on hg.mozilla.org.
  */
-function getHgZipPath(release, directory) {
+function getHgSchemasZipPath(release, directory) {
   const root = release.endsWith("central") ? "" : "releases/";
   const branch = directory == "mail" ? "comm-" : "mozilla-";
-  return `https://hg.mozilla.org/${root}${branch}${release}/archive/tip.zip/${directory}/components/extensions/schemas`;
+  return `${HG_URL}/${root}${branch}${release}/archive/tip.zip/${directory}/components/extensions/schemas`;
+}
+
+/**
+ * Get URL to download locale files from hg.mozilla.org.
+ *
+ * @param {string} release - The release, for example central, beta, esr115, ...
+ * @param {string} directory - The directory, one of toolkit or mail.
+ *
+ * @returns {string} URL pointing to raw file download of extension permission
+ *   locale files on hg.mozilla.org.
+ */
+function getHgLocaleFilePath(release, directory) {
+  const root = release.endsWith("central") ? "" : "releases/";
+  const branch = directory == "mail" ? "comm-" : "mozilla-";
+  const path = directory == "mail" ? "messenger" : "toolkit/global"
+  return `${HG_URL}/${root}${branch}${release}/raw-file/tip/${directory}/locales/en-US/${path}/extensionPermissions.ftl`;
 }
 
 /**
@@ -527,7 +591,7 @@ function processSchema(
     const parts = fullPath.split(".");
     if (parts.length == 2 && parts[1] == "properties") {
       for (let key of Object.keys(value)) {
-       value[key] = processSchema(value[key], key, requested_manifest_version, owner, fullPath)
+        value[key] = processSchema(value[key], key, requested_manifest_version, owner, fullPath)
       }
       return value;
     }
@@ -647,7 +711,8 @@ async function writePrettyJSONFile(path, json) {
  * @param {string} url - The URL to download.
  * @param {string} path - The path to write the downloaded file to.
  */
-function download(url, path) {
+async function download(url, path) {
+  await new Promise(resolve => setTimeout(resolve, 2500));
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(path);
     https
@@ -666,9 +731,9 @@ function download(url, path) {
 }
 
 function addCompatData(value, owner, pathData) {
-  const {namespaceName, entryName, paramName, propertyName} = pathData;
+  const { namespaceName, entryName, paramName, propertyName } = pathData;
   let addApiDoc = true;
-  let entry = 
+  let entry =
     bcd.webextensions.api[namespaceName] &&
     bcd.webextensions.api[namespaceName][entryName]
 
