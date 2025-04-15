@@ -19,6 +19,7 @@ const extract = require("extract-zip");
 const bcd = require("@thunderbirdops/webext-compat-data");
 const os = require("node:os");
 
+const HG_URL = "https://hg-edge.mozilla.org";
 const HELP_SCREEN = `
 
 Usage:
@@ -45,6 +46,7 @@ Options:
 
 // URL placeholder and their correct value. These are replaced if found inside
 // an <a> tag in descriptions.
+// TODO: Move into config file.
 const URL_REPLACEMENTS = {
   "url-binary-string":
     "https://developer.mozilla.org/en-US/docs/Web/API/DOMString/Binary",
@@ -141,14 +143,20 @@ async function main() {
       args.manifest_version
     }`;
   }
+  if (args.release == "release") {
+    api_doc_branch = `release-mv${args.manifest_version}`;
+  }
 
   // Setup output directory.
-  await fs.rm(args.output, { recursive: true, force: true });
+  if (fs.existsSync(args.output)) {
+    await fs.rm(args.output, { recursive: true, force: true });
+  }
   await fs.mkdir(args.output, { recursive: true });
 
-  for (const file of await fs.readdir(args.output)) {
-    await fs.unlink(path.join(args.output, file));
-  }
+  // Extract and save the locale strings for permissions.
+  const permissionStrings = await extractPermissionStrings(["toolkit", "mail"]);
+  const permissionStringsFile = path.join(args.output, "permissions.ftl");
+  fs.writeFileSync(permissionStringsFile, permissionStrings.join('\n') + '\n', 'utf-8');
 
   // Parse the toolkit schema files.
   await readSchemaFiles(
@@ -273,9 +281,45 @@ async function main() {
       sortKeys(schema.json)
     );
   }
+
+  // Cleanup.
+  fs.rmSync(TEMP_DIR, { recursive: true, force: true });
 }
 
 // -----------------------------------------------------------------------------
+
+
+/**
+ * The permission strings are stored in two fluent files, one in toolkit/ and one
+ * in mail/. This function extracts all string definitions with the prefix
+ * "webext-perms-description-".
+ * 
+ * @param {string[]} folders - the folders to check for permission fluent files,
+ *    should be toolkit and mail
+ * @returns {string[]} permission strings
+ */
+async function extractPermissionStrings(folders) {
+  const permissionStrings = [];
+  const prefix = 'webext-perms-description-';
+
+  for (let folder of folders) {
+    const filePath = path.join(TEMP_DIR, `${args.release}-${folder}-permissions.ftl`);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n');
+    const matchedLines = lines
+      .filter(line => line.startsWith(prefix))
+      .map(line => {
+        // Remove numbers appended to the keys, which sometimes are needed to
+        // deal with locale updates.
+        const [key, ...rest] = line.split('=');
+        let sanitizedKey = key.replace(/[\d\s]+$/, '');
+        let sanitizedValue = rest.join('=').trim().replaceAll("{ -brand-short-name }", "Thunderbird")
+        return `${sanitizedKey} = ${sanitizedValue}`;
+      });
+    permissionStrings.push(...matchedLines);
+  }
+  return permissionStrings;
+}
 
 async function downloadSchemaFilesIntoTempFolder(release) {
   if (!release) {
@@ -288,34 +332,38 @@ async function downloadSchemaFilesIntoTempFolder(release) {
     path.join(os.tmpdir(), "webext-schemas-generator")
   );
   const TEMP_DIR = tempFolder;
-
   await fs.mkdir(TEMP_DIR, { recursive: true });
+
 
   const folders = new Set();
   const directories = ["mail", "browser", "toolkit"];
   for (let i = 0; i < directories.length; i++) {
     const folderName = directories[i];
-    const fileName = path.join(TEMP_DIR, `${release}-${folderName}.zip`);
+    const zipFileName = path.join(TEMP_DIR, `${release}-${folderName}.zip`);
+    const localeFileName = path.join(TEMP_DIR, `${release}-${folderName}-permissions.ftl`);
     console.log(
       ` [${i + 1}/${
         directories.length
       }] Downloading ${release}-${folderName}.zip from ${release} to ${TEMP_DIR} ...`
     );
     try {
-      await download(getHgZipPath(release, folderName), fileName);
+      await download(getHgSchemasZipPath(release, folderName), zipFileName);
+      // Skip browser locale file, which does not exist.
+      if (["mail", "toolkit"].includes(folderName)) {
+        await download(getHgLocaleFilePath(release, folderName), localeFileName);
+      }
     } catch (ex) {
       throw new Error("Download failed, try again later");
     }
     console.log(
-      ` [${i + 1}/${
-        directories.length
+      ` [${i + 1}/${directories.length
       }] Unpacking ${release}-${folderName}.zip ...`
     );
-    await extract(path.resolve(fileName), {
+    await extract(path.resolve(zipFileName), {
       dir: path.resolve(TEMP_DIR),
       onEntry: (entry) => folders.add(entry.fileName.split("/")[0]),
     });
-    await fs.unlink(fileName);
+    await fs.unlink(zipFileName);
   }
 
   // Renaming folders and moving /comm inside of /mozilla.
@@ -386,10 +434,26 @@ async function readSchemaFiles(owner, files) {
  *
  * @returns {string} URL pointing to zip download of schema files on hg.mozilla.org.
  */
-function getHgZipPath(release, directory) {
+function getHgSchemasZipPath(release, directory) {
   const root = release.endsWith("central") ? "" : "releases/";
   const branch = directory == "mail" ? "comm-" : "mozilla-";
-  return `https://hg.mozilla.org/${root}${branch}${release}/archive/tip.zip/${directory}/components/extensions/schemas`;
+  return `${HG_URL}/${root}${branch}${release}/archive/tip.zip/${directory}/components/extensions/schemas`;
+}
+
+/**
+ * Get URL to download locale files from hg.mozilla.org.
+ *
+ * @param {string} release - The release, for example central, beta, esr115, ...
+ * @param {string} directory - The directory, one of toolkit or mail.
+ *
+ * @returns {string} URL pointing to raw file download of extension permission
+ *   locale files on hg.mozilla.org.
+ */
+function getHgLocaleFilePath(release, directory) {
+  const root = release.endsWith("central") ? "" : "releases/";
+  const branch = directory == "mail" ? "comm-" : "mozilla-";
+  const path = directory == "mail" ? "messenger" : "toolkit/global"
+  return `${HG_URL}/${root}${branch}${release}/raw-file/tip/${directory}/locales/en-US/${path}/extensionPermissions.ftl`;
 }
 
 /**
@@ -680,7 +744,8 @@ async function writePrettyJSONFile(path, json) {
  * @param {string} url - The URL to download.
  * @param {string} path - The path to write the downloaded file to.
  */
-function download(url, path) {
+async function download(url, path) {
+  await new Promise(resolve => setTimeout(resolve, 2500));
   return new Promise((resolve, reject) => {
     const file = createWriteStream(path);
     https
