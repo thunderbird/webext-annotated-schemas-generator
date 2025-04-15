@@ -1,21 +1,24 @@
+#!/usr/bin/env node
+
 /*
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
- * 
+ *
  * Author: John Bieling
- * Version: 1.2 (27.08.2024)
  */
 
-const path = require("path");
-const fs = require("fs-extra");
+const path = require("node:path");
+const fs = require("node:fs/promises");
+const { createWriteStream } = require("node:fs");
 const https = require("https");
 const yargs = require("yargs");
 const jsonUtils = require("comment-json");
 const extract = require("extract-zip");
 const bcd = require("@thunderbirdops/webext-compat-data");
+const os = require("node:os");
 
-const HG_URL = "https://hg-edge.mozilla.org";
+// TODO: No longer mention the temp download
 const HELP_SCREEN = `
 
 Usage:
@@ -101,9 +104,10 @@ const URL_REPLACEMENTS = {
     "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/User_actions",
 };
 
-const TEMP_DIR = "temp";
 const API_DOC_BASE_URL = "https://webextension-api.thunderbird.net/en";
+const HG_URL = "https://hg-edge.mozilla.org";
 
+let TEMP_DIR;
 let schemas = [];
 let api_doc_branch = "latest";
 
@@ -123,6 +127,11 @@ async function main() {
     return;
   }
 
+  const tempFolder = await fs.mkdtemp(
+    path.join(os.tmpdir(), "webext-schemas-generator")
+  );
+  TEMP_DIR = tempFolder;
+
   // Download schema files, if requested.
   if (args.release) {
     args.source = await downloadSchemaFilesIntoTempFolder(args.release);
@@ -136,43 +145,43 @@ async function main() {
     api_doc_branch = `beta-mv${args.manifest_version}`;
   }
   if (args.release.startsWith("esr")) {
-    api_doc_branch = `${args.release.substring(3)}-esr-mv${args.manifest_version}`;
+    api_doc_branch = `${args.release.substring(3)}-esr-mv${
+      args.manifest_version
+    }`;
   }
   if (args.release == "release") {
     api_doc_branch = `release-mv${args.manifest_version}`;
   }
 
   // Setup output directory.
-  if (fs.existsSync(args.output)) {
-    fs.rmSync(args.output, { recursive: true, force: true });
-  }
-  fs.mkdirSync(args.output, { recursive: true });
+  await fs.rm(args.output, { recursive: true, force: true });
+  await fs.mkdir(args.output, { recursive: true });
 
   // Extract and save the locale strings for permissions.
   const permissionStrings = await extractPermissionStrings(["toolkit", "mail"]);
   const permissionStringsFile = path.join(args.output, "permissions.ftl");
-  fs.writeFileSync(permissionStringsFile, permissionStrings.join('\n') + '\n', 'utf-8');
+  await fs.writeFile(permissionStringsFile, permissionStrings.join('\n') + '\n', 'utf-8');
 
   // Parse the toolkit schema files.
-  readSchemaFiles(
+  await readSchemaFiles(
     "firefox",
-    getJsonFiles(
+    await getJsonFiles(
       path.join(args.source, "toolkit", "components", "extensions", "schemas")
     )
   );
 
   // Parse the browser schema files.
-  readSchemaFiles(
+  await readSchemaFiles(
     "firefox",
-    getJsonFiles(
+    await getJsonFiles(
       path.join(args.source, "browser", "components", "extensions", "schemas")
     )
   );
 
   // Parse Thunderbird's own schema files.
-  readSchemaFiles(
+  await readSchemaFiles(
     "thunderbird",
-    getJsonFiles(
+    await getJsonFiles(
       path.join(
         args.source,
         "comm",
@@ -187,44 +196,64 @@ async function main() {
   // An API should list `version_added: false` to indicate no support. A missing
   // __compat entry indicates default behavior = support.
   const BCD_SUPPORTED_APIS = Object.keys(bcd.webextensions.api).filter(
-    e => bcd.webextensions.api[e]?.__compat?.support?.thunderbird?.version_added !== false
+    (e) =>
+      bcd.webextensions.api[e]?.__compat?.support?.thunderbird
+        ?.version_added !== false
   );
-  const BCD_SUPPORTED_MANIFESTS = Object.keys(bcd.webextensions.manifest).filter(
-    e => bcd.webextensions.manifest[e]?.__compat?.support?.thunderbird?.version_added !== false
+  const BCD_SUPPORTED_MANIFESTS = Object.keys(
+    bcd.webextensions.manifest
+  ).filter(
+    (e) =>
+      bcd.webextensions.manifest[e]?.__compat?.support?.thunderbird
+        ?.version_added !== false
   );
   const THUNDERBIRD_APIS = schemas
-    .filter(e => e.owner == "thunderbird")
-    .map(e => e.json.map(n => n.namespace)).flat()
-    .filter(e => e != "manifest");
+    .filter((e) => e.owner == "thunderbird")
+    .map((e) => e.json.map((n) => n.namespace))
+    .flat()
+    .filter((e) => e != "manifest");
 
   // Filter out unsupported.
-  schemas = schemas.flatMap(schema => {
+  schemas = schemas.flatMap((schema) => {
     // Keep Thunderbird APIs.
     if (schema.owner == "thunderbird") {
       return [schema];
     }
     // Remove re-implemented
-    if (schema.json.map(e => e.namespace).some(e => THUNDERBIRD_APIS.includes(e))) {
+    if (
+      schema.json
+        .map((e) => e.namespace)
+        .some((e) => THUNDERBIRD_APIS.includes(e))
+    ) {
       return [];
     }
     // Remove unsupported.
-    if (!schema.json.map(e => e.namespace).some(e => BCD_SUPPORTED_APIS.includes(e))) {
+    if (
+      !schema.json
+        .map((e) => e.namespace)
+        .some((e) => BCD_SUPPORTED_APIS.includes(e))
+    ) {
       // Before removing this file, check if it extends the global manifest with
       // a supported WebExtensionManifest entry.
       let manifestTypes = schema.json
-        .filter(e => e.namespace == "manifest")
-        .map(e => e.types).flat()
-      if (manifestTypes
-        .filter(e => e.$extend == "WebExtensionManifest")
-        .map(e => Object.keys(e.properties)).flat()
-        .some(e => BCD_SUPPORTED_MANIFESTS.includes(e))
+        .filter((e) => e.namespace == "manifest")
+        .map((e) => e.types)
+        .flat();
+      if (
+        manifestTypes
+          .filter((e) => e.$extend == "WebExtensionManifest")
+          .map((e) => Object.keys(e.properties))
+          .flat()
+          .some((e) => BCD_SUPPORTED_MANIFESTS.includes(e))
       ) {
         return [schema];
       }
       // Also check, if it defines either the global WebExtensionManifest or
       // the global ManifestBase entry.
-      if (manifestTypes
-        .some(e => ["ManifestBase", "WebExtensionManifest"].includes(e.id))
+      if (
+        manifestTypes.some((e) =>
+          ["ManifestBase", "WebExtensionManifest"].includes(e.id)
+        )
       ) {
         return [schema];
       }
@@ -258,7 +287,7 @@ async function main() {
   }
 
   // Cleanup.
-  fs.rmSync(TEMP_DIR, { recursive: true, force: true });
+  await fs.rm(TEMP_DIR, { recursive: true, force: true });
 }
 
 // -----------------------------------------------------------------------------
@@ -279,7 +308,7 @@ async function extractPermissionStrings(folders) {
 
   for (let folder of folders) {
     const filePath = path.join(TEMP_DIR, `${args.release}-${folder}-permissions.ftl`);
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = await fs.readFile(filePath, 'utf-8');
     const lines = content.split('\n');
     const matchedLines = lines
       .filter(line => line.startsWith(prefix))
@@ -303,11 +332,6 @@ async function downloadSchemaFilesIntoTempFolder(release) {
     );
   }
 
-  if (fs.existsSync(TEMP_DIR)) {
-    fs.rmSync(TEMP_DIR, { recursive: true, force: true });
-  }
-  fs.mkdirSync(TEMP_DIR, { recursive: true });
-
   const folders = new Set();
   const directories = ["mail", "browser", "toolkit"];
   for (let i = 0; i < directories.length; i++) {
@@ -315,8 +339,9 @@ async function downloadSchemaFilesIntoTempFolder(release) {
     const zipFileName = path.join(TEMP_DIR, `${release}-${folderName}.zip`);
     const localeFileName = path.join(TEMP_DIR, `${release}-${folderName}-permissions.ftl`);
     console.log(
-      ` [${i + 1}/${directories.length
-      }] Downloading ${release}-${folderName}.zip from ${release} ...`
+      ` [${i + 1}/${
+        directories.length
+      }] Downloading ${release}-${folderName}.zip from ${release} to ${TEMP_DIR} ...`
     );
     try {
       await download(getHgSchemasZipPath(release, folderName), zipFileName);
@@ -333,7 +358,7 @@ async function downloadSchemaFilesIntoTempFolder(release) {
     );
     await extract(path.resolve(zipFileName), {
       dir: path.resolve(TEMP_DIR),
-      onEntry: entry => folders.add(entry.fileName.split("/")[0]),
+      onEntry: (entry) => folders.add(entry.fileName.split("/")[0]),
     });
     await fs.unlink(zipFileName);
   }
@@ -341,27 +366,26 @@ async function downloadSchemaFilesIntoTempFolder(release) {
   // Renaming folders and moving /comm inside of /mozilla.
   let mozillaFolder;
   for (const folder of folders) {
-    const parts = folder.split("-").map(e => e.toLowerCase());
+    const parts = folder.split("-").map((e) => e.toLowerCase());
     if (parts[0] == "mozilla") {
       mozillaFolder = folder;
     }
     if (parts[0] == "comm") {
-      fs.renameSync(path.join(TEMP_DIR, folder), path.join(TEMP_DIR, "comm"));
+      await fs.rename(path.join(TEMP_DIR, folder), path.join(TEMP_DIR, "comm"));
     }
   }
 
   // Check we have the folders we need.
-  if (
-    !fs.existsSync(path.join(TEMP_DIR, mozillaFolder)) ||
-    !fs.existsSync(path.join(TEMP_DIR, "comm"))
-  ) {
+  try {
+    await fs.access(path.join(TEMP_DIR, mozillaFolder));
+    await fs.access(path.join(TEMP_DIR, "comm"));
+  } catch (ex) {
     throw new Error("Download of schema files did not succeed!");
   }
 
-  await fs.move(
+  await fs.rename(
     path.join(TEMP_DIR, "comm"),
-    path.join(TEMP_DIR, mozillaFolder, "comm"),
-    { overwrite: true }
+    path.join(TEMP_DIR, mozillaFolder, "comm")
   );
   return path.join(TEMP_DIR, mozillaFolder);
 }
@@ -378,19 +402,18 @@ function mergeObjects(to, from) {
   return to;
 }
 
-function getJsonFiles(folderPath) {
-  return fs
-    .readdirSync(folderPath, { withFileTypes: true })
-    .filter(
-      item =>
-        !item.isDirectory() && path.extname(item.name).toLowerCase() === ".json"
-    );
+async function getJsonFiles(folderPath) {
+  const files = await fs.readdir(folderPath, { withFileTypes: true });
+  return files.filter(
+    (item) =>
+      !item.isDirectory() && path.extname(item.name).toLowerCase() === ".json"
+  );
 }
 
-function readSchemaFiles(owner, files) {
+async function readSchemaFiles(owner, files) {
   for (const file of files) {
     const json = jsonUtils.parse(
-      fs.readFileSync(path.join(file.path, file.name), "utf-8")
+      await fs.readFile(path.join(file.path, file.name), "utf-8")
     );
     schemas.push({
       file,
@@ -423,6 +446,7 @@ function getHgSchemasZipPath(release, directory) {
  * @returns {string} URL pointing to raw file download of extension permission
  *   locale files on hg.mozilla.org.
  */
+// TODO: Make it download to the same location as a local checkout.
 function getHgLocaleFilePath(release, directory) {
   const root = release.endsWith("central") ? "" : "releases/";
   const branch = directory == "mail" ? "comm-" : "mozilla-";
@@ -541,13 +565,15 @@ function processSchema(
   if (Array.isArray(value)) {
     return value
       .filter(
-        v =>
+        (v) =>
           (!v.min_manifest_version ||
             v.min_manifest_version <= requested_manifest_version) &&
           (!v.max_manifest_version ||
             v.max_manifest_version >= requested_manifest_version)
       )
-      .map(e => processSchema(e, e.name, requested_manifest_version, owner, fullPath));
+      .map((e) =>
+        processSchema(e, e.name, requested_manifest_version, owner, fullPath)
+      );
   }
 
   // Looks like value is an object. Find out where we are to be able to retrieve
@@ -569,7 +595,7 @@ function processSchema(
       addCompatData(value, owner, {
         namespaceName: namespace,
         entryName: name,
-      })
+      });
     }
 
     // Check if we are at the parameters level.
@@ -582,100 +608,105 @@ function processSchema(
       addCompatData(value, owner, {
         namespaceName: namespace,
         entryName: name,
-        paramName: parameter
-      })
+        paramName: parameter,
+      });
     }
   } else {
     // Top-level properties are not an array, but an object with the property
-    // names as keys. 
+    // names as keys.
     const parts = fullPath.split(".");
     if (parts.length == 2 && parts[1] == "properties") {
       for (let key of Object.keys(value)) {
-        value[key] = processSchema(value[key], key, requested_manifest_version, owner, fullPath)
+        value[key] = processSchema(
+          value[key],
+          key,
+          requested_manifest_version,
+          owner,
+          fullPath
+        );
       }
       return value;
     }
   }
 
-  return Object.keys(value)
-    .reduce((o, key) => {
-      let v = value[key];
-      const v_orig_length = v.length;
-      if (
-        (!v.min_manifest_version ||
-          v.min_manifest_version <= requested_manifest_version) &&
-        (!v.max_manifest_version ||
-          v.max_manifest_version >= requested_manifest_version)
-      ) {
-        v = processSchema(
-          value[key],
-          value[key].name,
-          requested_manifest_version,
-          owner,
-          `${fullPath}.${key}`
-        );
-        switch (key) {
-          case "min_manifest_version":
-          case "max_manifest_version":
-            // Do not include manifest limits in clean per-single-manifest schema
-            // files.
-            break;
-          case "choices":
-            // Merge enums if a choice is all but enums.
-            if (v_orig_length != v.length && v.every(e => !!e.enum)) {
-              // Merge into first entry.
-              v[0].enum = v
-                .reduce((enums, entry) => {
-                  enums.push(...entry.enum);
-                  return enums;
-                }, [])
-                .sort();
-              v = [v[0]];
-            }
+  return Object.keys(value).reduce((o, key) => {
+    let v = value[key];
+    const v_orig_length = v.length;
+    if (
+      (!v.min_manifest_version ||
+        v.min_manifest_version <= requested_manifest_version) &&
+      (!v.max_manifest_version ||
+        v.max_manifest_version >= requested_manifest_version)
+    ) {
+      v = processSchema(
+        value[key],
+        value[key].name,
+        requested_manifest_version,
+        owner,
+        `${fullPath}.${key}`
+      );
+      switch (key) {
+        case "min_manifest_version":
+        case "max_manifest_version":
+          // Do not include manifest limits in clean per-single-manifest schema
+          // files.
+          break;
+        case "choices":
+          // Merge enums if a choice is all but enums.
+          if (v_orig_length != v.length && v.every((e) => !!e.enum)) {
+            // Merge into first entry.
+            v[0].enum = v
+              .reduce((enums, entry) => {
+                enums.push(...entry.enum);
+                return enums;
+              }, [])
+              .sort();
+            v = [v[0]];
+          }
 
-            // If the manifest_version filter reduced the choice entries and we
-            // are left with only one, remove the choice.
-            if (v_orig_length != v.length && v.length == 1) {
-              Object.assign(o, v[0]);
-            } else {
-              o[key] = v;
-            }
-            break;
-          case "description":
-          case "deprecated":
-            if (typeof v === "string") {
-              // Newer schema files use the Firefox notation directly, but older
-              // ones may still use the deprecated reStructuredText notations.
-              // Fix any remaining deprecated notation.
-              v = v.replace(/``(.+?)``/g, "<val>$1</val>");
-              v = v.replace(/:doc:`(.*?)`/g, "$(doc:$1)");
-              v = v.replace(/:ref:`(.*?)`/g, "$(ref:$1)");
-              v = v.replace(
-                /:permission:`(.*?)`/g,
-                "<permission>$1</permission>"
-              );
-
-              // Replace URLs.
-              v = v.replace(/`(.*?) <(.*?)>`__/g, "<a href='$2'>$1</a>");
-              v = v.replace(/href='url-.*?'/g, match => {
-                const placeholder = match.slice(6, -1);
-                if (URL_REPLACEMENTS[placeholder]) {
-                  return `href='${URL_REPLACEMENTS[placeholder]}'`;
-                }
-                console.log(`Unknown url placeholder: ${placeholder}`);
-                return match;
-              });
-
-              // Replace single back ticks.
-              v = v.replace(/`(.+?)`/g, "<val>$1</val>");
-            }
-          default:
+          // If the manifest_version filter reduced the choice entries and we
+          // are left with only one, remove the choice.
+          if (v_orig_length != v.length && v.length == 1) {
+            Object.assign(o, v[0]);
+          } else {
             o[key] = v;
-        }
-      }
+          }
+          break;
+        case "description":
+        case "deprecated":
+          if (typeof v === "string") {
+            // Newer schema files use the Firefox notation directly, but older
+            // ones may still use the deprecated reStructuredText notations.
+            // Fix any remaining deprecated notation.
+            v = v.replace(/``(.+?)``/g, "<val>$1</val>");
+            v = v.replace(/:doc:`(.*?)`/g, "$(doc:$1)");
+            v = v.replace(/:ref:`(.*?)`/g, "$(ref:$1)");
+            v = v.replace(
+              /:permission:`(.*?)`/g,
+              "<permission>$1</permission>"
+            );
 
-      return o;
-    }, {});
+            // Replace URLs.
+            v = v.replace(/`(.*?) <(.*?)>`__/g, "<a href='$2'>$1</a>");
+            v = v.replace(/href='url-.*?'/g, (match) => {
+              const placeholder = match.slice(6, -1);
+              if (URL_REPLACEMENTS[placeholder]) {
+                return `href='${URL_REPLACEMENTS[placeholder]}'`;
+              }
+              console.log(`Unknown url placeholder: ${placeholder}`);
+              return match;
+            });
+
+            // Replace single back ticks.
+            v = v.replace(/`(.+?)`/g, "<val>$1</val>");
+          }
+        default:
+          o[key] = v;
+      }
+    }
+
+    return o;
+  }, {});
 }
 
 function sortKeys(x) {
@@ -698,7 +729,7 @@ function sortKeys(x) {
  */
 async function writePrettyJSONFile(path, json) {
   try {
-    return await fs.outputFile(path, JSON.stringify(json, null, 4));
+    return await fs.writeFile(path, JSON.stringify(json, null, 4));
   } catch (err) {
     console.error("Error in writePrettyJSONFile()", path, err);
     throw err;
@@ -714,9 +745,9 @@ async function writePrettyJSONFile(path, json) {
 async function download(url, path) {
   await new Promise(resolve => setTimeout(resolve, 2500));
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(path);
+    const file = createWriteStream(path);
     https
-      .get(url, response => {
+      .get(url, (response) => {
         response.pipe(file);
         file.on("finish", () => {
           file.close(() => {
@@ -724,7 +755,7 @@ async function download(url, path) {
           });
         });
       })
-      .on("error", err => {
+      .on("error", (err) => {
         reject(err);
       });
   });
@@ -735,7 +766,7 @@ function addCompatData(value, owner, pathData) {
   let addApiDoc = true;
   let entry =
     bcd.webextensions.api[namespaceName] &&
-    bcd.webextensions.api[namespaceName][entryName]
+    bcd.webextensions.api[namespaceName][entryName];
 
   if (entry && paramName) {
     entry = entry[paramName];
@@ -748,7 +779,7 @@ function addCompatData(value, owner, pathData) {
 
   let compatData = entry.__compat;
   if (!compatData) {
-    return
+    return;
   }
 
   if (compatData?.mdn_url) {
@@ -761,7 +792,9 @@ function addCompatData(value, owner, pathData) {
     // Generate Thunderbird API_DOC_URL.
     const anchorParts = [entryName];
     if (value.parameters) {
-      anchorParts.push(...value.parameters.map(e => e.name).filter(e => e != "callback"))
+      anchorParts.push(
+        ...value.parameters.map((e) => e.name).filter((e) => e != "callback")
+      );
     }
     const anchor = anchorParts.join("-").toLowerCase();
     value.api_documentation_url = `${API_DOC_BASE_URL}/${api_doc_branch}/${namespaceName}.html#${anchor}`;
