@@ -130,7 +130,6 @@ async function main() {
   const tempFolder = await fs.mkdtemp(
     path.join(os.tmpdir(), "webext-schemas-generator")
   );
-  await fs.mkdir(tempFolder, { recursive: true });
   TEMP_DIR = tempFolder;
 
   // Download schema files, if requested.
