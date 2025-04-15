@@ -1,0 +1,33 @@
+{
+  "name": "@thunderbird/webext-schema-generator",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Simple typings generator for Thunderbird WebExtension schema",
+  "main": "get_thunderbird_schema_files.js",
+  "bin": {
+    "get-thunderbird-schema-files": "get_thunderbird_schema_files.js"
+  },
+  "bugs": {
+    "url": "https://github.com/thunderbird/webext-schemas-generator/issues"
+  },
+  "license": "MPL-2.0",
+  "author": " John Bieling <john.bieling@gmx.de>",
+  "contributors": [
+    "John Bieling <john.bieling@gmx.de>",
+    "Arnd Issler <email@arndissler.net>"
+  ],
+  "scripts": {
+    "start": "node get_thunderbird_schema_files.js"
+  },
+  "dependencies": {
+    "@thunderbirdops/webext-compat-data": "^5.5.4-6.2",
+    "comment-json": "^4.2.4",
+    "extract-zip": "^2.0.1",
+    "fs-extra": "^11.2.0",
+    "path": "^0.12.7",
+    "yargs": "^17.7.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
