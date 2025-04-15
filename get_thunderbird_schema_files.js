@@ -342,7 +342,7 @@ async function downloadFilesFromMozilla(release) {
       }] Downloading ${release}-${folderName}.zip from ${release} to ${TEMP_DIR} ...`
     );
     try {
-      await download(getHgSchemasZipPath(release, folderName), zipFileName);
+      await download(getHgFolderZipPath(release, `${folderName}/components/extensions/schemas`), zipFileName);
     } catch (ex) {
       throw new Error("Download failed, try again later");
     }
@@ -384,8 +384,14 @@ async function downloadFilesFromMozilla(release) {
 
   // Download locale files.
   for (let localeFile of LOCALE_FILES) {
-    const hgFilePath = getHgFilePath(release, localeFile);
+    // LOCALE_FILES are specified how they end up in the local source folder, with
+    // all of comm-* being in a comm/ folder. That folder does not exists in the
+    // online tree.
     const parts = localeFile.split("/");
+    const hgFilePath = getHgFilePath(
+      release,
+      parts[0] == "comm" ? parts.slice(1).join("/") : parts.join("/")
+    );
     await fs.mkdir(path.join(TEMP_DIR, mozillaFolder, ...parts.slice(0, -1)), { recursive: true });
     await download(hgFilePath, path.join(TEMP_DIR, mozillaFolder, ...parts));
   }
@@ -427,17 +433,17 @@ async function readSchemaFiles(owner, files) {
 }
 
 /**
- * Get URL to download schema files from hg.mozilla.org.
+ * Get URL to download a folder as a zip file from hg.mozilla.org.
  *
  * @param {string} release - The release, for example central, beta, esr115, ...
- * @param {string} directory - The directory, one of browser, toolkit or mail.
+ * @param {string} path - The path of the folder.
  *
- * @returns {string} URL pointing to zip download of schema files on hg.mozilla.org.
+ * @returns {string} URL pointing to zip download of the folder from hg.mozilla.org.
  */
-function getHgSchemasZipPath(release, directory) {
+function getHgFolderZipPath(release, path) {
   const root = release.endsWith("central") ? "" : "releases/";
-  const branch = directory == "mail" ? "comm-" : "mozilla-";
-  return `${HG_URL}/${root}${branch}${release}/archive/tip.zip/${directory}/components/extensions/schemas`;
+  const branch = path.startsWith("mail") ? "comm-" : "mozilla-";
+  return `${HG_URL}/${root}${branch}${release}/archive/tip.zip/${path}`;
 }
 
 /**
@@ -450,11 +456,7 @@ function getHgSchemasZipPath(release, directory) {
  */
 function getHgFilePath(release, path) {
   const root = release.endsWith("central") ? "" : "releases/";
-  const branch = path.startsWith("comm") ? "comm-" : "mozilla-";
-  if (branch == "comm-") {
-    // Files in comm/ are directly on /
-    path = path.split("/").slice(1).join("/")
-  }
+  const branch = path.startsWith("mail") ? "comm-" : "mozilla-";
   return `${HG_URL}/${root}${branch}${release}/raw-file/tip/${path}`;
 }
 
