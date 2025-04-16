@@ -477,7 +477,6 @@ async function getJsonFiles(folderPath) {
 
 async function readSchemaFiles(owner, files) {
   for (const file of files) {
-    console.log(path.join(file.path, file.name));
     const json = jsonUtils.parse(
       await fs.readFile(path.join(file.path, file.name), "utf-8")
     );
