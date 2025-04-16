@@ -132,12 +132,7 @@ const LOCALE_FILES = [
     filePath: "mail/locales/en-US/messenger/extensionPermissions.ftl",
   }
 ];
-const VERSION_FILES = [
-  {
-    branch: "comm",
-    filePath: "mail/config/version.txt",
-  }
-]
+const COMM_VERSION_FILE = "mail/config/version.txt";
 
 let TEMP_DIR;
 let schemas = [];
@@ -308,6 +303,21 @@ async function main() {
     );
   }
 
+  // Add information about application version.
+  const versionFilePath = path.join(args.source, "comm", ...COMM_VERSION_FILE.split("/"));
+  const applicationVersion = await fs.readFile(versionFilePath, 'utf-8').then(v => v.trim());
+  for (const schema of schemas) {
+    let manifestNamespace = schema.json.find(e => e.namespace == "manifest");
+    if (manifestNamespace) {
+      manifestNamespace.applicationVersion = applicationVersion;
+    } else {
+      schema.json.push({
+        namespace: "manifest",
+        applicationVersion,
+      })
+    }
+  }
+
   // Write files.
   for (const schema of schemas) {
     const output_file_name = schema.file.name;
@@ -369,7 +379,7 @@ async function downloadFilesFromMozilla(release) {
   }
 
   const folders = new Set();
-  const steps = 2 * SCHEMA_FOLDERS.length + LOCALE_FILES.length + VERSION_FILES.length;
+  const steps = 2 * SCHEMA_FOLDERS.length + LOCALE_FILES.length + 1;
   let step = 1;
 
   for (let schemaFolder of SCHEMA_FOLDERS) {
@@ -432,14 +442,14 @@ async function downloadFilesFromMozilla(release) {
     await downloadHgFile(repository, localeFile.filePath, mozillaFolder);
   }
 
-  // Download version file.
-  for (let versionFile of VERSION_FILES) {
-    const repository = `${versionFile.branch}-${release}`;
+  // Download application version file from comm-* repository.
+  {
+    const repository = `comm-${release}`;
     console.log(
       ` [${step++}/${steps}]`,
-      ` Downloading ${versionFile.filePath} from ${repository} to ${TEMP_DIR} ...`
+      ` Downloading ${COMM_VERSION_FILE} from ${repository} to ${TEMP_DIR} ...`
     );
-    await downloadHgFile(repository, versionFile.filePath, mozillaFolder);
+    await downloadHgFile(repository, COMM_VERSION_FILE, mozillaFolder);
   }
 
   return path.join(TEMP_DIR, mozillaFolder);
