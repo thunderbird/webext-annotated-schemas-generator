@@ -103,10 +103,41 @@ const URL_REPLACEMENTS = {
 
 const API_DOC_BASE_URL = "https://webextension-api.thunderbird.net/en";
 const HG_URL = "https://hg-edge.mozilla.org";
-const LOCALE_FILES = [
-  `toolkit/locales/en-US/toolkit/global/extensionPermissions.ftl`,
-  `comm/mail/locales/en-US/messenger/extensionPermissions.ftl`,
+
+const SCHEMA_FOLDERS = [
+  {
+    branch: "comm",
+    folderPath: "mail/components/extensions/schemas",
+    zipFileNameSuffix: "mail",
+  },
+  {
+    branch: "mozilla",
+    folderPath: "browser/components/extensions/schemas",
+    zipFileNameSuffix: "browser",
+  },
+  {
+    branch: "mozilla",
+    folderPath: "toolkit/components/extensions/schemas",
+    zipFileNameSuffix: "toolkit",
+  },
+
 ];
+const LOCALE_FILES = [
+  {
+    branch: "mozilla",
+    filePath: "toolkit/locales/en-US/toolkit/global/extensionPermissions.ftl",
+  },
+  {
+    branch: "comm",
+    filePath: "mail/locales/en-US/messenger/extensionPermissions.ftl",
+  }
+];
+const VERSION_FILES = [
+  {
+    branch: "comm",
+    filePath: "mail/config/version.txt",
+  }
+]
 
 let TEMP_DIR;
 let schemas = [];
@@ -306,7 +337,12 @@ async function extractPermissionStrings(sourceFolder) {
   const prefix = 'webext-perms-description-';
 
   for (let localeFile of LOCALE_FILES) {
-    const parts = localeFile.split("/");
+    const parts = localeFile.filePath.split("/");
+    // Files from comm-* repositories are inside the comm/ folder in the local
+    // source directory.
+    if (localeFile.branch == "comm") {
+      parts.unshift("comm");
+    }
     const localeFilePath = path.join(sourceFolder, ...parts);
     const content = await fs.readFile(localeFilePath, 'utf-8')
     const lines = content.split('\n');
@@ -333,31 +369,34 @@ async function downloadFilesFromMozilla(release) {
   }
 
   const folders = new Set();
-  const directories = ["mail", "browser", "toolkit"];
-  for (let i = 0; i < directories.length; i++) {
-    const folderName = directories[i];
-    const zipFileName = path.join(TEMP_DIR, `${release}-${folderName}.zip`);
+  const steps = 2 * SCHEMA_FOLDERS.length + LOCALE_FILES.length + VERSION_FILES.length;
+  let step = 1;
+
+  for (let schemaFolder of SCHEMA_FOLDERS) {
+    const zipFileName = `${release}-${schemaFolder.zipFileNameSuffix}.zip`;
+    const repository = `${schemaFolder.branch}-${release}`;
+    const zipFilePath = path.join(TEMP_DIR, zipFileName);
     console.log(
-      ` [${i + 1}/${directories.length
-      }] Downloading ${release}-${folderName}.zip from ${release} to ${TEMP_DIR} ...`
+      ` [${step++}/${steps}]`,
+      ` Downloading ${zipFileName} from ${repository} to ${TEMP_DIR} ...`
     );
     try {
-      await download(getHgFolderZipPath(release, `${folderName}/components/extensions/schemas`), zipFileName);
+      await download(getHgFolderZipPath(repository, schemaFolder.folderPath), zipFilePath);
     } catch (ex) {
       throw new Error("Download failed, try again later");
     }
     console.log(
-      ` [${i + 1}/${directories.length
-      }] Unpacking ${release}-${folderName}.zip ...`
+      ` [${step++}/${steps}]`,
+      ` Unpacking ${zipFileName} ...`
     );
-    await extract(path.resolve(zipFileName), {
+    await extract(path.resolve(zipFilePath), {
       dir: path.resolve(TEMP_DIR),
       onEntry: (entry) => folders.add(entry.fileName.split("/")[0]),
     });
-    await fs.unlink(zipFileName);
+    await fs.unlink(zipFilePath);
   }
 
-  // Renaming folders and moving /comm inside of /mozilla.
+  // Find the mozilla-* folder and rename /comm-* to /comm.
   let mozillaFolder;
   for (const folder of folders) {
     const parts = folder.split("-").map((e) => e.toLowerCase());
@@ -377,6 +416,7 @@ async function downloadFilesFromMozilla(release) {
     throw new Error("Download of schema files did not succeed!");
   }
 
+  // Move /comm inside of /mozilla.
   await fs.rename(
     path.join(TEMP_DIR, "comm"),
     path.join(TEMP_DIR, mozillaFolder, "comm")
@@ -384,16 +424,22 @@ async function downloadFilesFromMozilla(release) {
 
   // Download locale files.
   for (let localeFile of LOCALE_FILES) {
-    // LOCALE_FILES are specified how they end up in the local source folder, with
-    // all of comm-* being in a comm/ folder. That folder does not exists in the
-    // online tree.
-    const parts = localeFile.split("/");
-    const hgFilePath = getHgFilePath(
-      release,
-      parts[0] == "comm" ? parts.slice(1).join("/") : parts.join("/")
+    const repository = `${localeFile.branch}-${release}`;
+    console.log(
+      ` [${step++}/${steps}]`,
+      ` Downloading ${localeFile.filePath} from ${repository} to ${TEMP_DIR} ...`
     );
-    await fs.mkdir(path.join(TEMP_DIR, mozillaFolder, ...parts.slice(0, -1)), { recursive: true });
-    await download(hgFilePath, path.join(TEMP_DIR, mozillaFolder, ...parts));
+    await downloadHgFile(repository, localeFile.filePath, mozillaFolder);
+  }
+
+  // Download version file.
+  for (let versionFile of VERSION_FILES) {
+    const repository = `${versionFile.branch}-${release}`;
+    console.log(
+      ` [${step++}/${steps}]`,
+      ` Downloading ${versionFile.filePath} from ${repository} to ${TEMP_DIR} ...`
+    );
+    await downloadHgFile(repository, versionFile.filePath, mozillaFolder);
   }
 
   return path.join(TEMP_DIR, mozillaFolder);
@@ -435,29 +481,47 @@ async function readSchemaFiles(owner, files) {
 /**
  * Get URL to download a folder as a zip file from hg.mozilla.org.
  *
- * @param {string} release - The release, for example central, beta, esr115, ...
- * @param {string} path - The path of the folder.
+ * @param {string} repository - The repository, for example comm-central,
+ *    comm-beta, comm-esr115, ...
+ * @param {string} folderPath - The path of the folder.
  *
  * @returns {string} URL pointing to zip download of the folder from hg.mozilla.org.
  */
-function getHgFolderZipPath(release, path) {
-  const root = release.endsWith("central") ? "" : "releases/";
-  const branch = path.startsWith("mail") ? "comm-" : "mozilla-";
-  return `${HG_URL}/${root}${branch}${release}/archive/tip.zip/${path}`;
+function getHgFolderZipPath(repository, folderPath) {
+  const root = repository.endsWith("central") ? "" : "releases/";
+  return `${HG_URL}/${root}${repository}/archive/tip.zip/${folderPath}`;
 }
 
 /**
  * Get URL to download a raw file from hg.mozilla.org.
  *
- * @param {string} release - The release, for example central, beta, esr115, ...
- * @param {string} path - The path of the file.
+ * @param {string} repository - The repository, for example comm-central,
+ *    comm-beta, comm-esr115, ...
+ * @param {string} filePath - The path of the file.
  *
  * @returns {string} URL pointing to the raw file download from hg.mozilla.org.
  */
-function getHgFilePath(release, path) {
-  const root = release.endsWith("central") ? "" : "releases/";
-  const branch = path.startsWith("mail") ? "comm-" : "mozilla-";
-  return `${HG_URL}/${root}${branch}${release}/raw-file/tip/${path}`;
+function getHgFilePath(repository, filePath) {
+  const root = repository.endsWith("central") ? "" : "releases/";
+  return `${HG_URL}/${root}${repository}/raw-file/tip/${filePath}`;
+}
+
+/**
+ * Download a file from 
+ * @param {*} repository
+ * @param {*} filePath 
+ * @param {*} folder 
+ */
+async function downloadHgFile(repository, filePath, folder) {
+  const hgFilePath = getHgFilePath(repository, filePath);
+  const parts = filePath.split("/");
+  // Files from comm-* repositories are inside the comm/ folder in the local
+  // source directory.
+  if (repository.startsWith("comm")) {
+    parts.unshift("comm");
+  }
+  await fs.mkdir(path.join(TEMP_DIR, folder, ...parts.slice(0, -1)), { recursive: true });
+  await download(hgFilePath, path.join(TEMP_DIR, folder, ...parts));
 }
 
 /**
@@ -730,14 +794,14 @@ function sortKeys(x) {
 /**
  * Helper function to produce pretty JSON files.
  *
- * @param {string} path - The path to write the JSON to.
+ * @param {string} filePath - The path to write the JSON to.
  * @param {obj} json - The obj to write into the file.
  */
-async function writePrettyJSONFile(path, json) {
+async function writePrettyJSONFile(filePath, json) {
   try {
-    return await fs.writeFile(path, JSON.stringify(json, null, 4));
+    return await fs.writeFile(filePath, JSON.stringify(json, null, 4));
   } catch (err) {
-    console.error("Error in writePrettyJSONFile()", path, err);
+    console.error("Error in writePrettyJSONFile()", filePath, err);
     throw err;
   }
 }
@@ -746,12 +810,12 @@ async function writePrettyJSONFile(path, json) {
  * Helper function to download a file.
  *
  * @param {string} url - The URL to download.
- * @param {string} path - The path to write the downloaded file to.
+ * @param {string} filePath - The path to write the downloaded file to.
  */
-async function download(url, path) {
+async function download(url, filePath) {
   await new Promise(resolve => setTimeout(resolve, 2500));
   return new Promise((resolve, reject) => {
-    const file = createWriteStream(path);
+    const file = createWriteStream(filePath);
     https
       .get(url, (response) => {
         response.pipe(file);
