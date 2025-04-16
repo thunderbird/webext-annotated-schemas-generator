@@ -642,7 +642,7 @@ function processSchema(
             v.max_manifest_version >= requested_manifest_version)
       )
       .map((e) =>
-        processSchema(e, e.name, requested_manifest_version, owner, fullPath)
+        processSchema(e, e.name || e.id, requested_manifest_version, owner, fullPath)
       );
   }
 
