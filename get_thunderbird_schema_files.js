@@ -306,7 +306,11 @@ async function main() {
   // Add information about application version.
   const versionFilePath = path.join(args.source, "comm", ...COMM_VERSION_FILE.split("/"));
   const applicationVersion = await fs.readFile(versionFilePath, 'utf-8').then(v => v.trim());
-  console.log(`::set-output name=tag_name::${applicationVersion}`);
+  
+  const githubWorkflowOutput = process.env.GITHUB_OUTPUT;
+  if (githubWorkflowOutput) {
+    await fs.appendFile(githubWorkflowOutput, `tag_name=${applicationVersion}\n`);
+  }
   for (const schema of schemas) {
     let manifestNamespace = schema.json.find(e => e.namespace == "manifest");
     if (manifestNamespace) {
