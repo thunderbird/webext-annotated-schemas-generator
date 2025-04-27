@@ -18,6 +18,41 @@ const extract = require("extract-zip");
 const bcd = require("@thunderbirdops/webext-compat-data");
 const os = require("node:os");
 const yaml = require("yaml");
+
+const API_DOC_BASE_URL = "https://webextension-api.thunderbird.net/en";
+const HG_URL = "https://hg-edge.mozilla.org";
+const BUILD_HUB_URL = "buildhub.moz.tools";
+
+const COMM_SCHEMA_FOLDERS = [
+  {
+    folderPath: "mail/components/extensions/schemas",
+    zipFileNameSuffix: "mail",
+  }
+];
+const MOZILLA_SCHEMA_FOLDERS = [
+  {
+    folderPath: "browser/components/extensions/schemas",
+    zipFileNameSuffix: "browser",
+  },
+  {
+    folderPath: "toolkit/components/extensions/schemas",
+    zipFileNameSuffix: "toolkit",
+  },
+
+];
+const LOCALE_FILES = [
+  {
+    branch: "mozilla",
+    filePath: "toolkit/locales/en-US/toolkit/global/extensionPermissions.ftl",
+  },
+  {
+    branch: "comm",
+    filePath: "mail/locales/en-US/messenger/extensionPermissions.ftl",
+  }
+];
+const COMM_VERSION_FILE = "mail/config/version_display.txt";
+const COMM_GECKO_REV = ".gecko_rev.yml";
+
 const HELP_SCREEN = `
 
 Usage:
@@ -101,39 +136,6 @@ const URL_REPLACEMENTS = {
     "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/User_actions",
 };
 
-const API_DOC_BASE_URL = "https://webextension-api.thunderbird.net/en";
-const HG_URL = "https://hg-edge.mozilla.org";
-
-const COMM_SCHEMA_FOLDERS = [
-  {
-    folderPath: "mail/components/extensions/schemas",
-    zipFileNameSuffix: "mail",
-  }
-];
-const MOZILLA_SCHEMA_FOLDERS = [
-  {
-    folderPath: "browser/components/extensions/schemas",
-    zipFileNameSuffix: "browser",
-  },
-  {
-    folderPath: "toolkit/components/extensions/schemas",
-    zipFileNameSuffix: "toolkit",
-  },
-
-];
-const LOCALE_FILES = [
-  {
-    branch: "mozilla",
-    filePath: "toolkit/locales/en-US/toolkit/global/extensionPermissions.ftl",
-  },
-  {
-    branch: "comm",
-    filePath: "mail/locales/en-US/messenger/extensionPermissions.ftl",
-  }
-];
-const COMM_VERSION_FILE = "mail/config/version_display.txt";
-const COMM_GECKO_REV = ".gecko_rev.yml";
-
 let TEMP_DIR;
 let schemas = [];
 let api_doc_branch = "latest";
@@ -161,6 +163,7 @@ async function main() {
 
   // Download schema files, if requested.
   if (args.release) {
+    console.log(` Downloading files from ${HG_URL} ...`);
     args.source = await downloadFilesFromMozilla(args.release);
   } else {
     // Set the release based on the provided folder name.
@@ -187,6 +190,8 @@ async function main() {
   const permissionStrings = await extractPermissionStrings(args.source);
   const permissionStringsFile = path.join(args.output, "permissions.ftl");
   await fs.writeFile(permissionStringsFile, permissionStrings.join('\n') + '\n', 'utf-8');
+
+  console.log(` Parsing schema files ...`);
 
   // Parse the toolkit schema files.
   await readSchemaFiles(
@@ -388,35 +393,96 @@ async function downloadFilesFromMozilla(release) {
     = 2 * COMM_SCHEMA_FOLDERS.length
     + 2 * MOZILLA_SCHEMA_FOLDERS.length
     + LOCALE_FILES.length
-    + 2;
+    + 3;
 
   let step = 1;
 
-  // Download GECKO_REV file.
-  const getMozillaRev = async () => {
+  // Query MOZ BUILD HUB to get the latest release for a given tree.
+  const getCommRevisionFromBuildHub = async (release) => {
+    try {
+      const postData = JSON.stringify({
+        "size": 1,
+        "query": {
+          "term": {
+            "source.tree": `comm-${release}`
+          }
+        },
+        "sort": [{
+          "download.date": { "order": "desc" }
+        }]
+      });
+
+      const options = {
+        hostname: BUILD_HUB_URL,
+        port: 443,
+        path: '/api/search',
+        method: 'POST'
+      };
+
+      console.log(
+        ` [${step++}/${steps}]`,
+        ` Requesting latest revision for comm-${release} from ${BUILD_HUB_URL} ...`
+      );
+
+      // Create the HTTP request.
+      const task = Promise.withResolvers();
+      const req = https.request(options, (res) => {
+        let responseData = '';
+
+        // A chunk of data has been received.
+        res.on('data', (chunk) => {
+          responseData += chunk;
+        });
+
+        // The whole response has been received.
+        res.on('end', () => {
+          task.resolve(responseData);
+        });
+      });
+
+      // Handle errors.
+      req.on('error', (error) => {
+        task.reject(error.message);
+      });
+
+      // Send the POST data.
+      req.write(postData);
+      req.end();
+
+      let data = JSON.parse(await task.promise);
+      return data.hits.hits[0]._source.source.revision;
+    } catch (ex) {
+      console.error(ex);
+      throw new Error(`Failed to retrieve latest revision from ${BUILD_HUB_URL}`);
+    }
+  }
+  const commRev = await getCommRevisionFromBuildHub(release);
+
+  // Download the GECKO_REV file to get the matching MOZILLA revision.
+  const getMozillaRevFromGeckoRevFile = async () => {
     const repository = `comm-${release}`;
     console.log(
       ` [${step++}/${steps}]`,
-      ` Downloading ${COMM_GECKO_REV} from ${repository} to ${TEMP_DIR} ...`
+      ` Downloading ${COMM_GECKO_REV} from ${repository} @ ${commRev} to ${TEMP_DIR} ...`
     );
-    let geckoRevFile = await downloadHgFile(repository, COMM_GECKO_REV, "rev");
+    let geckoRevFile = await downloadHgFile(repository, COMM_GECKO_REV, commRev, "rev");
     let content = await fs.readFile(geckoRevFile, "utf-8")
     let { GECKO_HEAD_REV } = yaml.parse(content);
     return GECKO_HEAD_REV;
   }
-  const mozillaRev = await getMozillaRev();
+  const mozillaRev = await getMozillaRevFromGeckoRevFile();
 
-  // Download COMM schema files
+  // Download COMM schema files.
   for (let schemaFolder of COMM_SCHEMA_FOLDERS) {
     const repository = `comm-${release}`;
     const zipFileName = `${release}-${schemaFolder.zipFileNameSuffix}.zip`;
     const zipFilePath = path.join(TEMP_DIR, zipFileName);
     console.log(
       ` [${step++}/${steps}]`,
-      ` Downloading ${zipFileName} from ${repository} to ${TEMP_DIR} ...`
+      ` Downloading ${zipFileName} from ${repository} @ ${commRev} to ${TEMP_DIR} ...`
     );
     try {
-      await download(getHgFolderZipPath(repository, schemaFolder.folderPath, "tip"), zipFilePath);
+      await download(getHgFolderZipPath(repository, schemaFolder.folderPath, commRev), zipFilePath);
     } catch (ex) {
       throw new Error("Download failed, try again later");
     }
@@ -431,13 +497,14 @@ async function downloadFilesFromMozilla(release) {
     await fs.unlink(zipFilePath);
   }
 
+  // Download MOZILLA schema files.
   for (let schemaFolder of MOZILLA_SCHEMA_FOLDERS) {
     const repository = `mozilla-${release}`;
     const zipFileName = `${release}-${schemaFolder.zipFileNameSuffix}.zip`;
     const zipFilePath = path.join(TEMP_DIR, zipFileName);
     console.log(
       ` [${step++}/${steps}]`,
-      ` Downloading ${zipFileName} from ${repository} to ${TEMP_DIR} ...`
+      ` Downloading ${zipFileName} from ${repository} @ ${mozillaRev} to ${TEMP_DIR} ...`
     );
     try {
       await download(getHgFolderZipPath(repository, schemaFolder.folderPath, mozillaRev), zipFilePath);
@@ -484,11 +551,12 @@ async function downloadFilesFromMozilla(release) {
   // Download locale files.
   for (let localeFile of LOCALE_FILES) {
     const repository = `${localeFile.branch}-${release}`;
+    const rev = localeFile.branch == "comm" ? commRev : mozillaRev;
     console.log(
       ` [${step++}/${steps}]`,
-      ` Downloading ${localeFile.filePath} from ${repository} to ${TEMP_DIR} ...`
+      ` Downloading ${localeFile.filePath} from ${repository} @ ${rev} to ${TEMP_DIR} ...`
     );
-    await downloadHgFile(repository, localeFile.filePath, mozillaFolder);
+    await downloadHgFile(repository, localeFile.filePath, rev, mozillaFolder);
   }
 
   // Download application version file from comm-* repository.
@@ -496,9 +564,9 @@ async function downloadFilesFromMozilla(release) {
     const repository = `comm-${release}`;
     console.log(
       ` [${step++}/${steps}]`,
-      ` Downloading ${COMM_VERSION_FILE} from ${repository} to ${TEMP_DIR} ...`
+      ` Downloading ${COMM_VERSION_FILE} from ${repository} @ ${commRev} to ${TEMP_DIR} ...`
     );
-    await downloadHgFile(repository, COMM_VERSION_FILE, mozillaFolder);
+    await downloadHgFile(repository, COMM_VERSION_FILE, commRev, mozillaFolder);
   }
 
   return path.join(TEMP_DIR, mozillaFolder);
@@ -559,22 +627,25 @@ function getHgFolderZipPath(repository, folderPath, revision) {
  * @param {string} repository - The repository, for example comm-central,
  *    comm-beta, comm-esr115, ...
  * @param {string} filePath - The path of the file.
+ * @param {string} rev - The revision of the file.
  *
  * @returns {string} URL pointing to the raw file download from hg.mozilla.org.
  */
-function getHgFilePath(repository, filePath) {
+function getHgFilePath(repository, filePath, rev) {
   const root = repository.endsWith("central") ? "" : "releases/";
-  return `${HG_URL}/${root}${repository}/raw-file/tip/${filePath}`;
+  return `${HG_URL}/${root}${repository}/raw-file/${rev}/${filePath}`;
 }
 
 /**
- * Download a file from 
- * @param {*} repository
- * @param {*} filePath 
- * @param {*} folder 
+ * Download a file from hg.mozilla.org.
+ * @param {string} repository - The repository, for example comm-central,
+ *    comm-beta, comm-esr115, ...
+ * @param {string} filePath - The path of the file.
+ * @param {string} rev - The revision of the file.
+ * @param {string} folder - The destination folder
  */
-async function downloadHgFile(repository, filePath, folder) {
-  const hgFilePath = getHgFilePath(repository, filePath);
+async function downloadHgFile(repository, filePath, rev, folder) {
+  const hgFilePath = getHgFilePath(repository, filePath, rev);
   const parts = filePath.split("/");
   // Files from comm-* repositories are inside the comm/ folder in the local
   // source directory.
