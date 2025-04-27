@@ -17,7 +17,7 @@ const jsonUtils = require("comment-json");
 const extract = require("extract-zip");
 const bcd = require("@thunderbirdops/webext-compat-data");
 const os = require("node:os");
-
+const yaml = require("yaml");
 const HELP_SCREEN = `
 
 Usage:
@@ -104,19 +104,18 @@ const URL_REPLACEMENTS = {
 const API_DOC_BASE_URL = "https://webextension-api.thunderbird.net/en";
 const HG_URL = "https://hg-edge.mozilla.org";
 
-const SCHEMA_FOLDERS = [
+const COMM_SCHEMA_FOLDERS = [
   {
-    branch: "comm",
     folderPath: "mail/components/extensions/schemas",
     zipFileNameSuffix: "mail",
-  },
+  }
+];
+const MOZILLA_SCHEMA_FOLDERS = [
   {
-    branch: "mozilla",
     folderPath: "browser/components/extensions/schemas",
     zipFileNameSuffix: "browser",
   },
   {
-    branch: "mozilla",
     folderPath: "toolkit/components/extensions/schemas",
     zipFileNameSuffix: "toolkit",
   },
@@ -133,6 +132,7 @@ const LOCALE_FILES = [
   }
 ];
 const COMM_VERSION_FILE = "mail/config/version_display.txt";
+const COMM_GECKO_REV = ".gecko_rev.yml";
 
 let TEMP_DIR;
 let schemas = [];
@@ -306,7 +306,7 @@ async function main() {
   // Add information about application version.
   const versionFilePath = path.join(args.source, "comm", ...COMM_VERSION_FILE.split("/"));
   const applicationVersion = await fs.readFile(versionFilePath, 'utf-8').then(v => v.trim());
-  
+
   const githubWorkflowOutput = process.env.GITHUB_OUTPUT;
   if (githubWorkflowOutput) {
     await fs.appendFile(githubWorkflowOutput, `tag_name=${applicationVersion}\n`);
@@ -384,19 +384,63 @@ async function downloadFilesFromMozilla(release) {
   }
 
   const folders = new Set();
-  const steps = 2 * SCHEMA_FOLDERS.length + LOCALE_FILES.length + 1;
+  const steps
+    = 2 * COMM_SCHEMA_FOLDERS.length
+    + 2 * MOZILLA_SCHEMA_FOLDERS.length
+    + LOCALE_FILES.length
+    + 2;
+
   let step = 1;
 
-  for (let schemaFolder of SCHEMA_FOLDERS) {
+  // Download GECKO_REV file.
+  const getMozillaRev = async () => {
+    const repository = `comm-${release}`;
+    console.log(
+      ` [${step++}/${steps}]`,
+      ` Downloading ${COMM_GECKO_REV} from ${repository} to ${TEMP_DIR} ...`
+    );
+    let geckoRevFile = await downloadHgFile(repository, COMM_GECKO_REV, "rev");
+    let content = await fs.readFile(geckoRevFile, "utf-8")
+    let { GECKO_HEAD_REV } = yaml.parse(content);
+    return GECKO_HEAD_REV;
+  }
+  const mozillaRev = await getMozillaRev();
+
+  // Download COMM schema files
+  for (let schemaFolder of COMM_SCHEMA_FOLDERS) {
+    const repository = `comm-${release}`;
     const zipFileName = `${release}-${schemaFolder.zipFileNameSuffix}.zip`;
-    const repository = `${schemaFolder.branch}-${release}`;
     const zipFilePath = path.join(TEMP_DIR, zipFileName);
     console.log(
       ` [${step++}/${steps}]`,
       ` Downloading ${zipFileName} from ${repository} to ${TEMP_DIR} ...`
     );
     try {
-      await download(getHgFolderZipPath(repository, schemaFolder.folderPath), zipFilePath);
+      await download(getHgFolderZipPath(repository, schemaFolder.folderPath, "tip"), zipFilePath);
+    } catch (ex) {
+      throw new Error("Download failed, try again later");
+    }
+    console.log(
+      ` [${step++}/${steps}]`,
+      ` Unpacking ${zipFileName} ...`
+    );
+    await extract(path.resolve(zipFilePath), {
+      dir: path.resolve(TEMP_DIR),
+      onEntry: (entry) => folders.add(entry.fileName.split("/")[0]),
+    });
+    await fs.unlink(zipFilePath);
+  }
+
+  for (let schemaFolder of MOZILLA_SCHEMA_FOLDERS) {
+    const repository = `mozilla-${release}`;
+    const zipFileName = `${release}-${schemaFolder.zipFileNameSuffix}.zip`;
+    const zipFilePath = path.join(TEMP_DIR, zipFileName);
+    console.log(
+      ` [${step++}/${steps}]`,
+      ` Downloading ${zipFileName} from ${repository} to ${TEMP_DIR} ...`
+    );
+    try {
+      await download(getHgFolderZipPath(repository, schemaFolder.folderPath, mozillaRev), zipFilePath);
     } catch (ex) {
       throw new Error("Download failed, try again later");
     }
@@ -499,12 +543,14 @@ async function readSchemaFiles(owner, files) {
  * @param {string} repository - The repository, for example comm-central,
  *    comm-beta, comm-esr115, ...
  * @param {string} folderPath - The path of the folder.
+ * @param {string} revision - The requested revision.
  *
  * @returns {string} URL pointing to zip download of the folder from hg.mozilla.org.
  */
-function getHgFolderZipPath(repository, folderPath) {
+function getHgFolderZipPath(repository, folderPath, revision) {
   const root = repository.endsWith("central") ? "" : "releases/";
-  return `${HG_URL}/${root}${repository}/archive/tip.zip/${folderPath}`;
+  const rv = `${HG_URL}/${root}${repository}/archive/${revision}.zip/${folderPath}`;
+  return rv;
 }
 
 /**
@@ -536,7 +582,7 @@ async function downloadHgFile(repository, filePath, folder) {
     parts.unshift("comm");
   }
   await fs.mkdir(path.join(TEMP_DIR, folder, ...parts.slice(0, -1)), { recursive: true });
-  await download(hgFilePath, path.join(TEMP_DIR, folder, ...parts));
+  return download(hgFilePath, path.join(TEMP_DIR, folder, ...parts));
 }
 
 /**
@@ -836,7 +882,7 @@ async function download(url, filePath) {
         response.pipe(file);
         file.on("finish", () => {
           file.close(() => {
-            resolve();
+            resolve(filePath);
           });
         });
       })

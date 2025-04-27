@@ -23,6 +23,7 @@
     "@thunderbirdops/webext-compat-data": "^5.5.4-6.2",
     "comment-json": "^4.2.4",
     "extract-zip": "^2.0.1",
+    "yaml": "^2.7.1",
     "yargs": "^17.7.2"
   },
   "engines": {
