@@ -132,7 +132,7 @@ const LOCALE_FILES = [
     filePath: "mail/locales/en-US/messenger/extensionPermissions.ftl",
   }
 ];
-const COMM_VERSION_FILE = "mail/config/version.txt";
+const COMM_VERSION_FILE = "mail/config/version_display.txt";
 
 let TEMP_DIR;
 let schemas = [];
