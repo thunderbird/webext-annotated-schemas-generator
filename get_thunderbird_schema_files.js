@@ -617,7 +617,7 @@ async function readSchemaFiles(owner, files) {
 async function mergeAnnotations(schema, annotation, basePath) {
   if (
     typeof schema != typeof annotation ||
-    Array.isArray(schema != Array.isArray(annotation))
+    Array.isArray(schema) != Array.isArray(annotation)
   ) {
     throw new Error("Unexpected type mismatch between schema entry and annotation entry")
   }
