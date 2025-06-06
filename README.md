@@ -16,8 +16,7 @@ are then processed as follows:
 - Thunderbird schema files are augmented with the `api_documentation_url` property.  
 - Thunderbird annotation files are merged into the final schema output.
 
-For convenience, the Thunderbird team provides the processed output in the  
-[webext-schemas](https://github.com/thunderbird/webext-schemas) repository.
+For convenience, the Thunderbird team provides the processed output in the [webext-schemas](https://github.com/thunderbird/webext-schemas) repository.
 
 
 Install needed packages
