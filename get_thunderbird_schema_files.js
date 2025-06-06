@@ -27,6 +27,10 @@ const COMM_SCHEMA_FOLDERS = [
   {
     folderPath: "mail/components/extensions/schemas",
     zipFileNameSuffix: "mail",
+  },
+  {
+    folderPath: "mail/components/extensions/annotations",
+    zipFileNameSuffix: "mail-annotations",
   }
 ];
 const MOZILLA_SCHEMA_FOLDERS = [
@@ -50,8 +54,12 @@ const LOCALE_FILES = [
     filePath: "mail/locales/en-US/messenger/extensionPermissions.ftl",
   }
 ];
+
+const COMM_URL_PLACEHOLDER_FILE = "mail/components/extensions/annotations/url-placeholders.json"
 const COMM_VERSION_FILE = "mail/config/version_display.txt";
 const COMM_GECKO_REV = ".gecko_rev.yml";
+
+let URL_REPLACEMENTS;
 
 const HELP_SCREEN = `
 
@@ -74,68 +82,6 @@ Options:
                                 with a matching /comm directory. Either --release
                                 or --source has to be specified.
 `;
-
-// URL placeholder and their correct value. These are replaced if found inside
-// an <a> tag in descriptions.
-// TODO: Move into config file.
-const URL_REPLACEMENTS = {
-  "url-binary-string":
-    "https://developer.mozilla.org/en-US/docs/Web/API/DOMString/Binary",
-  "url-canvas-element":
-    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/canvas",
-  "url-css-color-string":
-    "https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_colors/Color_values",
-  "url-commands-shortcuts":
-    "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/commands#shortcut_values",
-  "url-content-scripts":
-    "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Content_scripts",
-  "url-content-script-click-capture":
-    "https://bugzilla.mozilla.org/show_bug.cgi?id=1618828#c3",
-  "url-content-type":
-    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type",
-  "url-contextmenu-event":
-    "https://developer.mozilla.org/en-US/docs/Web/API/Element/contextmenu_event",
-  "url-contextualIdentity":
-    "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/contextualIdentities",
-  "url-cookieStore":
-    "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/contextualIdentities/ContextualIdentity#cookiestoreid",
-  "url-date-time-format":
-    "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/DateTimeFormat",
-  "url-dom-file": "https://developer.mozilla.org/docs/Web/API/File",
-  "url-dom-file-array-buffer":
-    "https://developer.mozilla.org/en-US/docs/Web/API/Blob/arrayBuffer",
-  "url-dom-file-text":
-    "https://developer.mozilla.org/en-US/docs/Web/API/Blob/text",
-  "url-help-cannot-encrypt":
-    "https://support.mozilla.org/en-US/kb/thunderbird-help-cannot-encrypt",
-  "url-choosing-icon-size":
-    "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_action#choosing_icon_sizes",
-  "url-image-data":
-    "https://developer.mozilla.org/en-US/docs/Web/API/ImageData",
-  "url-input-encoding":
-    "https://developer.mozilla.org/en-US/docs/Web/API/Encoding_API/Encodings",
-  "url-legacy-properties":
-    "https://searchfox.org/comm-central/rev/8a1ae67088acf237dab2fd704db18589e7bf119e/mailnews/addrbook/modules/VCardUtils.jsm#295-334",
-  "url-match-patterns":
-    "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns",
-  "url-mdn-browser-styles":
-    "https://developer.mozilla.org/docs/Mozilla/Add-ons/WebExtensions/user_interface/Browser_styles",
-  "url-mdn-icon-size":
-    "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_action#choosing_icon_sizes",
-  "url-runtime-last-error":
-    "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/lastError",
-  "url-runtime-on-connect":
-    "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/onConnect",
-  "url-runtime-on-message":
-    "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/onMessage",
-  "url-theme-experiment":
-    "https://github.com/thunderbird/sample-extensions/tree/master/manifest_v2/theme_experiment",
-  "url-ui-elements":
-    "https://developer.thunderbird.net/add-ons/mailextensions/supported-ui-elements#menu-items",
-  "url-user-input-restrictions":
-    "https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/User_actions",
-};
-
 let TEMP_DIR;
 let schemas = [];
 let api_doc_branch = "latest";
@@ -191,6 +137,33 @@ async function main() {
   const permissionStringsFile = path.join(args.output, "permissions.ftl");
   await fs.writeFile(permissionStringsFile, permissionStrings.join('\n') + '\n', 'utf-8');
 
+  console.log(` Validating used URLs ...`);
+
+  URL_REPLACEMENTS = jsonUtils.parse(
+    await fs.readFile(path.join(args.source, "comm", COMM_URL_PLACEHOLDER_FILE), "utf-8")
+  );
+
+  for (let [placeholder, url] of Object.entries(URL_REPLACEMENTS)) {
+    const status = await new Promise(resolve => {
+      const request = https.get(url, (response) => {
+        response.resume();
+        resolve (response.statusCode);
+      });
+      
+      request.setTimeout(5000, () => {
+        request.destroy();
+        resolve(408); // Request Timeout
+      });
+      
+      request.on('error', (err) => {
+        resolve (500);
+      })
+    });
+    if (status != 200) {
+      console.log(" - problematic URL found:", status, placeholder, url)
+    }
+  }
+
   console.log(` Parsing schema files ...`);
 
   // Parse the toolkit schema files.
@@ -220,6 +193,21 @@ async function main() {
         "components",
         "extensions",
         "schemas"
+      )
+    )
+  );
+
+  // Add information from annotation files.
+  await readAnnotationFiles(
+    ["thunderbird", "firefox"],
+    await getJsonFiles(
+      path.join(
+        args.source,
+        "comm",
+        "mail",
+        "components",
+        "extensions",
+        "annotations"
       )
     )
   );
@@ -350,7 +338,8 @@ async function main() {
  * "webext-perms-description-".
  * 
  * @param {string} sourcefolders - the source folder as specified by --source
- * @returns {string[]} permission strings
+ *
+ * @returns {string[]} - Permission strings.
  */
 async function extractPermissionStrings(sourceFolder) {
   const permissionStrings = [];
@@ -381,6 +370,15 @@ async function extractPermissionStrings(sourceFolder) {
   return permissionStrings;
 }
 
+/**
+ * Downloads the required files from hg.mozilla.org. The files are specified by
+ * the global const COMM_SCHEMA_FOLDERS, MOZILLA_SCHEMA_FOLDERS and LOCALE_FILES.
+ * 
+ * @param {string} release - The release to get the files for, matching the names
+ *   used for releases on hg.mozilla.org (central, beta, esr128, ...)
+ *
+ * @returns {string} Path to the temp directory with the downloaded files.
+ */
 async function downloadFilesFromMozilla(release) {
   if (!release) {
     throw new Error(
@@ -456,7 +454,7 @@ async function downloadFilesFromMozilla(release) {
       throw new Error(`Failed to retrieve latest revision from ${BUILD_HUB_URL}`);
     }
   }
-  const commRev = await getCommRevisionFromBuildHub(release);
+  const commRev = release == "central" ? "tip" : await getCommRevisionFromBuildHub(release);
 
   // Download the GECKO_REV file to get the matching MOZILLA revision.
   const getMozillaRevFromGeckoRevFile = async () => {
@@ -466,11 +464,11 @@ async function downloadFilesFromMozilla(release) {
       ` Downloading ${COMM_GECKO_REV} from ${repository} @ ${commRev} to ${TEMP_DIR} ...`
     );
     let geckoRevFile = await downloadHgFile(repository, COMM_GECKO_REV, commRev, "rev");
-    let content = await fs.readFile(geckoRevFile, "utf-8")
+    let content = await fs.readFile(geckoRevFile, "utf-8");
     let { GECKO_HEAD_REV } = yaml.parse(content);
     return GECKO_HEAD_REV;
   }
-  const mozillaRev = await getMozillaRevFromGeckoRevFile();
+  const mozillaRev = release == "central" ? "tip" : await getMozillaRevFromGeckoRevFile();
 
   // Download COMM schema files.
   for (let schemaFolder of COMM_SCHEMA_FOLDERS) {
@@ -534,7 +532,7 @@ async function downloadFilesFromMozilla(release) {
     }
   }
 
-  // Check we have the folders we need.
+  // Check if all needed folders are available.
   try {
     await fs.access(path.join(TEMP_DIR, mozillaFolder));
     await fs.access(path.join(TEMP_DIR, "comm"));
@@ -572,18 +570,13 @@ async function downloadFilesFromMozilla(release) {
   return path.join(TEMP_DIR, mozillaFolder);
 }
 
-// Recursive merge, to is modified.
-function mergeObjects(to, from) {
-  for (const n in from) {
-    if (typeof to[n] != "object") {
-      to[n] = from[n];
-    } else if (typeof from[n] == "object") {
-      to[n] = mergeObjects(to[n], from[n]);
-    }
-  }
-  return to;
-}
-
+/**
+ * Get all files in a given folder.
+ * 
+ * @param {string} folderPath - The path of the folder
+ * 
+ * @returns {File[]}
+ */
 async function getJsonFiles(folderPath) {
   const files = await fs.readdir(folderPath, { withFileTypes: true });
   return files.filter(
@@ -592,6 +585,13 @@ async function getJsonFiles(folderPath) {
   );
 }
 
+/**
+ * Read the content of schema files, parse them as JSON and add them to the global
+ * schemas object.
+ * 
+ * @param {string} owner - The owner of the schema, either "thunderbird" or "firefox".
+ * @param {File[]} files
+ */
 async function readSchemaFiles(owner, files) {
   for (const file of files) {
     const json = jsonUtils.parse(
@@ -602,6 +602,130 @@ async function readSchemaFiles(owner, files) {
       json,
       owner,
     });
+  }
+}
+
+/**
+ * Merge annotation elements from the provided annotation JSON into the specified
+ * schema JSON.
+ * 
+ * @param {any} schema - An element from a schema JSON.
+ * @param {any} annotation  - An element from an annotation JSON.
+ * @param {string} basePath - The pase path of the currently processed annotation
+ *    schema, needed to resolve the path of to-be-included files.
+ */
+async function mergeAnnotations(schema, annotation, basePath) {
+  if (
+    typeof schema != typeof annotation ||
+    Array.isArray(schema != Array.isArray(annotation))
+  ) {
+    throw new Error("Unexpected type mismatch between schema entry and annotation entry")
+  }
+
+  if (Array.isArray(annotation)) {
+    // Array with objects which are identified by $extend, namespace, name, or id.
+    for (let aEntry of annotation) {
+      // If the annotation specified min/max_manifest_version, will match only
+      // against the same entry in the schema, otherwise match against all entries
+      // in the schema.
+      let sEntries = schema.filter(e =>
+        (aEntry.namespace && e.namespace == aEntry.namespace) ||
+        (aEntry.$extend && e.$extend == aEntry.$extend) ||
+        (aEntry.name && e.name == aEntry.name) ||
+        (aEntry.id && e.id == aEntry.id)
+      ).filter(e =>
+        (!aEntry.min_manifest_version || aEntry.min_manifest_version == e.min_manifest_version) &&
+        (!aEntry.max_manifest_version || aEntry.max_manifest_version == e.max_manifest_version)
+      );
+      if (sEntries.length) {
+        for (let sEntry of sEntries) {
+          await mergeAnnotations(sEntry, aEntry, basePath)
+        }
+      } else {
+        throw new Error(`Unmatched entry: ${JSON.stringify(aEntry, null, 2)}`);
+      }
+    }
+  } else if (typeof annotation == "object") {
+    for (const aEntry of Object.keys(annotation)) {
+      if (!schema[aEntry]) {
+        await expandAnnotations(aEntry, annotation, basePath);
+        schema[aEntry] = annotation[aEntry];
+      } else {
+        if (aEntry == "choices") {
+          // Choices must be matched by position.
+          if (schema[aEntry].length != annotation[aEntry].length) {
+            throw new Error("Choices array with non-matching sizes: ", aEntry);
+          }
+          for (let i = 0; i < annotation[aEntry].length; i++) {
+            await mergeAnnotations(schema[aEntry][i], annotation[aEntry][i], basePath)
+          }
+        } else {
+          await mergeAnnotations(schema[aEntry], annotation[aEntry], basePath)
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Expand to-be-included elements and add them directly to the schema.
+ * 
+ * @param {string} aEntry - The name of the currently processed JSON property.
+ * @param {any} annotation - The currently processed JSON object, which includes
+ *   aEntry.
+ * @param {string} basePath - The pase path of the currently processed annotation
+ *    schema, needed to resolve the path of to-be-included files.
+ */
+async function expandAnnotations(aEntry, annotation, basePath) {
+  switch (aEntry) {
+    case "annotations":
+      for (const aObj of annotation[aEntry]) {
+        if (!aObj.code || Array.isArray(aObj.code)) {
+          continue;
+        }
+
+        if (!aObj.type) {
+          if (aObj.code.endsWith(".js") || aObj.code.endsWith(".mjs")) { aObj.type = "JavaScript"; }
+          if (aObj.code.endsWith(".css")) { aObj.type = "CSS"; }
+          if (aObj.code.endsWith(".json")) { aObj.type = "JSON"; }
+        }
+        const code = await fs.readFile(path.join(basePath, aObj.code), "utf-8");
+        aObj.code = code.replaceAll("\r", "").split("\n");
+      }
+      break;
+    case "enums":
+      for (const enumName of Object.keys(annotation[aEntry])) {
+        if (annotation[aEntry][enumName]["annotations"]) {
+          await expandAnnotations("annotations", annotation[aEntry][enumName], basePath)
+        }
+      }
+      break;
+  }
+}
+
+/**
+ * Merge the information stored in the annotation files into the schema files.
+ * 
+ * @param {string[]} owners - Array of owners. Values should be either "thunderbird"
+ *    or "firefox". Try to merge each annotation file into the matching schema
+ *    file of the primary owner first. If that fails, try the secondary owner.
+ * @param {File[]} files - Array of annotation files.
+ */
+async function readAnnotationFiles(owners, files) {
+  for (const file of files) {
+    for (let owner of owners) {
+      let schema = schemas.find(e =>
+        e.owner == owner &&
+        e.file.name == file.name
+      );
+      if (schema) {
+        const json = jsonUtils.parse(
+          await fs.readFile(path.join(file.path, file.name), "utf-8")
+        );
+        await mergeAnnotations(schema.json, json, file.path);
+        break;
+      }
+    }
   }
 }
 
@@ -671,6 +795,18 @@ function processImports(value) {
 
   if (Array.isArray(value)) {
     return value.map(processImports);
+  }
+
+  // Recursive merge of objects, to is modified. 
+  const mergeObjects = (to, from) => {
+    for (const n in from) {
+      if (typeof to[n] != "object") {
+        to[n] = from[n];
+      } else if (typeof from[n] == "object") {
+        to[n] = mergeObjects(to[n], from[n]);
+      }
+    }
+    return to;
   }
 
   if (value.hasOwnProperty("$import")) {
@@ -778,8 +914,8 @@ function processSchema(
       );
   }
 
-  // Looks like value is an object. Find out where we are to be able to retrieve
-  // compat data.
+  // Looks like value is an object. Find current hierarchal location to be able
+  // to retrieve compat data.
   if (value.namespace) {
     // Reset.
     fullPath = value.namespace;
@@ -788,7 +924,7 @@ function processSchema(
   if (name && typeof name !== "object") {
     fullPath = `${fullPath}.${name}`;
     const parts = fullPath.split(".");
-    // Check if we are at the event/type/function level.
+    // Check if this is the event/type/function level.
     if (
       parts.length == 3 &&
       ["types", "functions", "events", "properties"].includes(parts[1])
@@ -800,7 +936,7 @@ function processSchema(
       });
     }
 
-    // Check if we are at the parameters level.
+    // Check if this is the parameters level.
     if (
       parts.length == 5 &&
       ["types", "functions", "events"].includes(parts[1]) &&
@@ -866,8 +1002,8 @@ function processSchema(
             v = [v[0]];
           }
 
-          // If the manifest_version filter reduced the choice entries and we
-          // are left with only one, remove the choice.
+          // If the manifest_version filter reduced the choice entries and only
+          // one remains, remove the choice.
           if (v_orig_length != v.length && v.length == 1) {
             Object.assign(o, v[0]);
           } else {
@@ -889,14 +1025,13 @@ function processSchema(
             );
 
             // Replace URLs.
-            v = v.replace(/`(.*?) <(.*?)>`__/g, "<a href='$2'>$1</a>");
-            v = v.replace(/href='url-.*?'/g, (match) => {
-              const placeholder = match.slice(6, -1);
-              if (URL_REPLACEMENTS[placeholder]) {
-                return `href='${URL_REPLACEMENTS[placeholder]}'`;
+            v = v.replace(/\$\(\s*url\s*:\s*([^)]+?)\s*\)\[(.+?)\]/g, (match, placeholder, label) => {
+              const url = URL_REPLACEMENTS[placeholder.trim()];
+              if (!url) {
+                console.log(`Unknown url placeholder: ${placeholder}`);
+                return match; // If no URL found, leave it as-is
               }
-              console.log(`Unknown url placeholder: ${placeholder}`);
-              return match;
+              return `<a href='${url}'>${label}</a>`;
             });
 
             // Replace single back ticks.
@@ -911,6 +1046,13 @@ function processSchema(
   }, {});
 }
 
+/**
+ * Sort nested objects by keys.
+ * 
+ * @param {any} x - To be sorted element. Skipped if it isn't an object.
+ *
+ * @returns The object recursively sorted by keys.
+ */
 function sortKeys(x) {
   if (typeof x !== "object" || !x) {
     return x;
@@ -963,6 +1105,14 @@ async function download(url, filePath) {
   });
 }
 
+/**
+ * Add compatibility data from BCD.
+ * 
+ * @param {any} value - The value to process. Usually an element from a schema JSON.
+ * @param {string} owner - The owner of the schema, either "thunderbird" or "firefox".
+ * @param {object} pathData - Information about the to be processed value, which
+ *    namespace, entry, parameter or property it belongs to.
+ */
 function addCompatData(value, owner, pathData) {
   const { namespaceName, entryName, paramName, propertyName } = pathData;
   let addApiDoc = true;
