@@ -1,20 +1,24 @@
 Overview
 ========
 
-This script pulls Thunderbird's WebExtension schema files from `hg.mozilla.org`
-or from a local checkout of the Mozilla Mercurial code repository.
+This script processes Mozilla WebExtension API schema files by retrieving them either
+from  [`hg.mozilla.org`](https://hg.mozilla.org) or from a local checkout of the Mozilla
+Mercurial code repository.
 
-Schema files of APIs not supported by Thunderbird are left out. Additionally, the
-schema files are processed as follows:
- 
- * `$import` keys are replaced by the referenced entities
- * entries not supported by the requested Manifest version are removed
- * URL placeholders in shorthand notation `$(url:key)[title]` in descriptions are replaced by `<a>` tags
- * the Firefox schema files are enriched by browser-compat-data
- * the Thunderbird schema files are enriched by the `api_documentation_url` property
+Schemas for APIs not supported by Thunderbird are excluded. The remaining schema files
+are then processed as follows:
 
-For convenience, the Thunderbird team is providing the generated output in the
+- `$import` keys are resolved by inlining the referenced entities.  
+- Entries not compatible with the requested manifest version are removed.  
+- URL placeholders in the form `$(url:key)[title]` within descriptions are replaced with
+  proper `<a>` tags.  
+- Firefox schema files are enriched using [browser-compat-data](https://github.com/mdn/browser-compat-data).  
+- Thunderbird schema files are augmented with the `api_documentation_url` property.  
+- Thunderbird annotation files are merged into the final schema output.
+
+For convenience, the Thunderbird team provides the processed output in the  
 [webext-schemas](https://github.com/thunderbird/webext-schemas) repository.
+
 
 Install needed packages
 =======================
