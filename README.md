@@ -9,7 +9,7 @@ schema files are processed as follows:
  
  * `$import` keys are replaced by the referenced entities
  * entries not supported by the requested Manifest version are removed
- * URL placeholders in shorthand notation (`$(url:key)[title]`) in descriptions are replaced by `<a>` tags
+ * URL placeholders in shorthand notation `$(url:key)[title]` in descriptions are replaced by `<a>` tags
  * the Firefox schema files are enriched by browser-compat-data
  * the Thunderbird schema files are enriched by the `api_documentation_url` property
 
