@@ -8,16 +8,19 @@
  * Author: John Bieling
  */
 
-const path = require("node:path");
-const fs = require("node:fs/promises");
-const { createWriteStream } = require("node:fs");
-const https = require("https");
-const yargs = require("yargs");
-const jsonUtils = require("comment-json");
-const extract = require("extract-zip");
-const bcd = require("@thunderbirdops/webext-compat-data");
-const os = require("node:os");
-const yaml = require("yaml");
+import path from "node:path";
+import fs from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import https from "https";
+import bent from 'bent';
+
+import jsonUtils from "comment-json";
+import extract from "extract-zip";
+import bcd from "@mdn/browser-compat-data" with { type: 'json' };
+import os from "node:os";
+import yaml from "yaml";
+
+const requestJson = bent('GET', 'json', 200);
 
 const API_DOC_BASE_URL = "https://webextension-api.thunderbird.net/en";
 const HG_URL = "https://hg-edge.mozilla.org";
@@ -59,7 +62,7 @@ const COMM_URL_PLACEHOLDER_FILE = "mail/components/extensions/annotations/url-pl
 const COMM_VERSION_FILE = "mail/config/version_display.txt";
 const COMM_GECKO_REV = ".gecko_rev.yml";
 
-let URL_REPLACEMENTS;
+let URL_REPLACEMENTS = {};
 
 const HELP_SCREEN = `
 
@@ -75,9 +78,9 @@ Options:
                                 deleted.
    --release=name             - The name of the Thunderbird release to get the
                                 schema files for. The files will be downloaded
-                                from hg.mozilla.org. Examples: "central", "beta"
-                                or "esr115". Either --release or --source has to
-                                be specified.
+                                from hg.mozilla.org. Examples: "central", "beta",
+                                "esr" or "esr115". Either --release or --source
+                                has to be specified.
    --source=path              - Path to a local checkout of a mozilla repository
                                 with a matching /comm directory. Either --release
                                 or --source has to be specified.
@@ -86,7 +89,7 @@ let TEMP_DIR;
 let schemas = [];
 let api_doc_branch = "latest";
 
-const args = yargs.argv;
+const args = parseArgs();
 if ((!args.source && !args.release) || !args.output || !args.manifest_version) {
   console.log(HELP_SCREEN);
 } else {
@@ -109,8 +112,18 @@ async function main() {
 
   // Download schema files, if requested.
   if (args.release) {
+    let release = args.release
+    if (release == "esr") {
+      let esr = await getThunderbirdESR();
+      if (!esr) {
+        throw new Error(
+          "Unable to determine version of current Thunderbird ESR."
+        );
+      }
+      release = `esr${esr}`
+    }
     console.log(` Downloading files from ${HG_URL} ...`);
-    args.source = await downloadFilesFromMozilla(args.release);
+    args.source = await downloadFilesFromMozilla(release);
   } else {
     // Set the release based on the provided folder name.
     args.release = path.basename(args.source).split("-")[1];
@@ -119,13 +132,12 @@ async function main() {
   // Determine api_doc_branch based on requested release.
   if (args.release == "beta") {
     api_doc_branch = `beta-mv${args.manifest_version}`;
-  }
-  if (args.release.startsWith("esr")) {
-    api_doc_branch = `${args.release.substring(3)}-esr-mv${args.manifest_version
-      }`;
-  }
-  if (args.release == "release") {
+  } else if (args.release == "release") {
     api_doc_branch = `release-mv${args.manifest_version}`;
+  } else if (args.release == "esr") {
+    api_doc_branch = `esr-mv${args.manifest_version}`;
+  } else if (args.release.startsWith("esr")) {
+    api_doc_branch = `${args.release.substring(3)}-esr-mv${args.manifest_version}`;
   }
 
   // Setup output directory.
@@ -144,21 +156,7 @@ async function main() {
   );
 
   for (let [placeholder, url] of Object.entries(URL_REPLACEMENTS)) {
-    const status = await new Promise(resolve => {
-      const request = https.get(url, (response) => {
-        response.resume();
-        resolve (response.statusCode);
-      });
-      
-      request.setTimeout(5000, () => {
-        request.destroy();
-        resolve(408); // Request Timeout
-      });
-      
-      request.on('error', (err) => {
-        resolve (500);
-      })
-    });
+    const status = await validateUrl(url)
     if (status != 200) {
       console.log(" - problematic URL found:", status, placeholder, url)
     }
@@ -212,73 +210,59 @@ async function main() {
     )
   );
 
-  // An API should list `version_added: false` to indicate no support. A missing
-  // __compat entry indicates default behavior = support.
-  const BCD_SUPPORTED_APIS = Object.keys(bcd.webextensions.api).filter(
-    (e) =>
-      bcd.webextensions.api[e]?.__compat?.support?.thunderbird
-        ?.version_added !== false
-  );
-  const BCD_SUPPORTED_MANIFESTS = Object.keys(
-    bcd.webextensions.manifest
-  ).filter(
-    (e) =>
-      bcd.webextensions.manifest[e]?.__compat?.support?.thunderbird
-        ?.version_added !== false
-  );
-  const THUNDERBIRD_APIS = schemas
-    .filter((e) => e.owner == "thunderbird")
-    .map((e) => e.json.map((n) => n.namespace))
-    .flat()
-    .filter((e) => e != "manifest");
-
-  // Filter out unsupported.
+  // Filter for supported schema entries, as defined by our annotation files.
+  // Thunderbird schemas are always included, Firefox schemas need to be included
+  // manually by specifying version_added.
   schemas = schemas.flatMap((schema) => {
     // Keep Thunderbird APIs.
     if (schema.owner == "thunderbird") {
       return [schema];
     }
-    // Remove re-implemented
-    if (
-      schema.json
-        .map((e) => e.namespace)
-        .some((e) => THUNDERBIRD_APIS.includes(e))
-    ) {
-      return [];
-    }
-    // Remove unsupported.
-    if (
-      !schema.json
-        .map((e) => e.namespace)
-        .some((e) => BCD_SUPPORTED_APIS.includes(e))
-    ) {
-      // Before removing this file, check if it extends the global manifest with
-      // a supported WebExtensionManifest entry.
-      let manifestTypes = schema.json
-        .filter((e) => e.namespace == "manifest")
-        .map((e) => e.types)
-        .flat();
-      if (
-        manifestTypes
-          .filter((e) => e.$extend == "WebExtensionManifest")
-          .map((e) => Object.keys(e.properties))
-          .flat()
-          .some((e) => BCD_SUPPORTED_MANIFESTS.includes(e))
-      ) {
-        return [schema];
+    // Remove unsupported entries.
+    schema.json = schema.json.filter(j => {
+      // Is there a version_added root entry?
+      const version_added = j.annotations && j.annotations.find(a => a.version_added).version_added;
+      if (version_added) {
+        // Root entries are removed, they are only used to indicate if a Firefox
+        // API is supported or not.
+        j.annotations = j.annotations.filter(a => !a.version_added);
+        if (!j.annotations.length) {
+          delete j.annotations
+        }
+        // The information is kept to be used as lower limit.
+        schema.version_added = version_added;
+        return true;
       }
-      // Also check, if it defines either the global WebExtensionManifest or
-      // the global ManifestBase entry.
-      if (
-        manifestTypes.some((e) =>
-          ["ManifestBase", "WebExtensionManifest"].includes(e.id)
+      // A WebExtensionManifest?
+      if (j.types && j.types.some(
+        t => [
+          "WebExtensionManifest",
+        ].includes(t.$extend) && Object.values(t.properties).some(
+          p => p.annotations && p.annotations.some(a => a.version_added)
         )
-      ) {
-        return [schema];
+      )) {
+        return true;
       }
-      return [];
-    }
-    return [schema];
+
+      // A permission?
+      if (j.types && j.types.some(
+        t => [
+          "Permission",
+          "OptionalPermission",
+          "PermissionNoPrompt",
+          "OptionalPermissionNoPrompt"
+        ].includes(t.$extend) && t.choices.some(c => c.enums && Object.values(c.enums).some(
+          p => p.annotations && p.annotations.some(a => a.version_added)
+        ))
+      )) {
+        return true;
+      }
+
+      return false;
+    });
+    return schema.json.length
+      ? [schema]
+      : [];
   });
 
   // Process $import.
@@ -289,11 +273,44 @@ async function main() {
   // Process schemas.
   for (const schema of schemas) {
     schema.json = processSchema(
+      schema,
       schema.json,
       null,
-      args.manifest_version,
-      schema.owner
+      args.manifest_version
     );
+  }
+
+  // Verify api doc links (async).
+  for (const schema of schemas) {
+    for (let entries of schema.json) {
+      for (let [name, values] of Object.entries(entries)) {
+
+        if (
+          ["types", "functions", "events"].includes(name)
+        ) {
+          for (let v of values.filter(v => v.api_documentation_url)) {
+            let status = await validateUrl(v.api_documentation_url);
+            if (status != 200) {
+              console.log(" - problematic URL found:", status, v.api_documentation_url)
+              delete v.api_documentation_url;
+            }
+          }
+        };
+
+        if (
+          ["properties"].includes(name)
+        ) {
+          for (let v of Object.values(values).filter(v => v.api_documentation_url)) {
+            let status = await validateUrl(v.api_documentation_url);
+            if (status != 200) {
+              console.log(" - problematic URL found:", status, v.api_documentation_url)
+              delete v.api_documentation_url;
+            }
+          }
+        }
+
+      }
+    }
   }
 
   // Add information about application version.
@@ -330,7 +347,6 @@ async function main() {
 }
 
 // -----------------------------------------------------------------------------
-
 
 /**
  * The permission strings are stored in two fluent files, one in toolkit/ and one
@@ -783,8 +799,7 @@ async function downloadHgFile(repository, filePath, rev, folder) {
 /**
  * Replace $import statements by the actual referenced element/namespace.
  *
- * @param {any} value - The value to process. Usually a schema JSON, but the
- *   function recursively calls itself on nested elements.
+ * @param {any} value - The currently processed value. Usually a schema JSON.
  *
  * @returns {any} The processed value.
  */
@@ -841,8 +856,7 @@ function processImports(value) {
 /**
  * Helper function to find an element or namespace in the provided (nested) obj.
  *
- * @param {any} value - The value to process. Usually the global schema data, but
- *   the function recursively calls itself on nested elements.
+ * @param {any} value - The currently processed value. Usually a schema JSON.
  * @param {string} searchString - The id or namespace name to look for.
  *
  * @returns {any} The processed value.
@@ -882,18 +896,20 @@ function getNestedIdOrNamespace(value, searchString) {
  * Sort JSON by keys for better diff-ability, filter by manifest version, merge
  * enums, remove single leftover choices.
  *
- * @param {any} value - The value to process. Usually a schema JSON, but the
- *   function recursively calls itself on nested elements.
+ * @param {object} schema - The currently processed schema.
+ * @param {any} value - The currently processed value. Usually a schema JSON, but
+ *   the function recursively calls itself on nested elements.
+ * @param {string} name - The name of currently processed value.
  * @param {string} requested_manifest_version - The manifest version which should
  *   used. Invalid elements are removed.
  *
  * @returns {any} The processed value.
  */
 function processSchema(
+  schema,
   value,
   name,
   requested_manifest_version,
-  owner,
   fullPath = ""
 ) {
   if (typeof value !== "object") {
@@ -910,7 +926,7 @@ function processSchema(
             v.max_manifest_version >= requested_manifest_version)
       )
       .map((e) =>
-        processSchema(e, e.name || e.id, requested_manifest_version, owner, fullPath)
+        processSchema(schema, e, e.name || e.id, requested_manifest_version, fullPath)
       );
   }
 
@@ -929,24 +945,34 @@ function processSchema(
       parts.length == 3 &&
       ["types", "functions", "events", "properties"].includes(parts[1])
     ) {
-      const [namespace, , name] = parts;
-      addCompatData(value, owner, {
-        namespaceName: namespace,
-        entryName: name,
-      });
+      const [namespaceName, , entryName] = parts;
+      if (schema.owner == "firefox") {
+        addFirefoxCompatData({
+          schema,
+          value,
+          namespaceName,
+          entryName,
+        });
+      }
+      if (schema.owner == "thunderbird") {
+        addThunderbirdCompatData({ value, namespaceName, entryName });
+      }
     }
 
     // Check if this is the parameters level.
     if (
       parts.length == 5 &&
       ["types", "functions", "events"].includes(parts[1]) &&
-      "parameters" == parts[3]
+      "parameters" == parts[3] &&
+      schema.owner == "firefox"
     ) {
-      const [namespace, , name, , parameter] = parts;
-      addCompatData(value, owner, {
-        namespaceName: namespace,
-        entryName: name,
-        paramName: parameter,
+      const [namespaceName, , entryName, , paramName] = parts;
+      addFirefoxCompatData({
+        schema,
+        value,
+        namespaceName,
+        entryName,
+        paramName,
       });
     }
   } else {
@@ -956,10 +982,10 @@ function processSchema(
     if (parts.length == 2 && parts[1] == "properties") {
       for (let key of Object.keys(value)) {
         value[key] = processSchema(
+          schema,
           value[key],
           key,
           requested_manifest_version,
-          owner,
           fullPath
         );
       }
@@ -977,10 +1003,10 @@ function processSchema(
         v.max_manifest_version >= requested_manifest_version)
     ) {
       v = processSchema(
+        schema,
         value[key],
         value[key].name,
         requested_manifest_version,
-        owner,
         `${fullPath}.${key}`
       );
       switch (key) {
@@ -1047,6 +1073,102 @@ function processSchema(
 }
 
 /**
+ * Add Firefox compatibility data from BCD.
+ * 
+ * @param {object} pathData
+ * @param {object} pathData.schema - The currently processed schema.
+ * @param {object} pathData.value - The currently processed value. Usually a schema
+ *    JSON.
+ * @param {string} pathData.namespaceName - namespace name of the to be processed
+ *    value
+ * @param {string} pathData.entryName - entry name of the to be processed
+ *    value
+ * @param {string} pathData.paramName - parameter name of the to be processed
+ *    value
+ */
+function addFirefoxCompatData({ schema, value, namespaceName, entryName, paramName }) {
+  let entry =
+    bcd.webextensions.api[namespaceName] &&
+    bcd.webextensions.api[namespaceName][entryName];
+  if (entry && paramName) {
+    entry = entry[paramName];
+  }
+  if (!entry) return;
+
+  let compatData = entry.__compat;
+  if (compatData) {
+    if (compatData?.mdn_url) {
+      if (!value.annotations) {
+        value.annotations = [];
+      }
+      value.annotations.push({ mdn_documentation_url: compatData.mdn_url });
+    }
+    if (compatData?.support?.firefox) {
+      if (!value.annotations) {
+        value.annotations = [];
+      }
+      for (let key of Object.keys(compatData?.support?.firefox)) {
+        switch (key) {
+          case "version_added":
+          case "version_removed": {
+            // Do not override explicitly specified values from annotation files.
+            if (!value.annotations.some(a => a.hasOwnProperty(key))) {
+              // If Thunderbird globally specifies a higher version (in the root
+              // of the schema) then Firefox/BCD, use that instead.
+              const firefox_version = compatData.support.firefox[key];
+              const thunderbird_version = schema[key];
+              value.annotations.push({
+                [key]: !isNaN(parseInt(thunderbird_version, 10)) && (
+                  firefox_version == true ||
+                  isNaN(parseInt(firefox_version, 10)) ||
+                  parseInt(thunderbird_version, 10) > parseInt(firefox_version, 10)
+                ) ? thunderbird_version : firefox_version
+              })
+            }
+            break;
+          }
+          case "notes": {
+            const notes = Array.isArray(compatData.support.firefox.notes)
+              ? compatData.support.firefox.notes
+              : [compatData.support.firefox.notes]
+            notes.forEach(note => {
+              value.annotations.push({ note, bcd: true })
+            })
+          }
+        }
+      }
+
+      compatData.support.firefox;
+    }
+  }
+}
+
+/**
+ * Add generated Thunderbird compatibility data.
+ * 
+ * @param {object} pathData
+ * @param {object} pathData.value - The currently processed value. Usually a schema
+ *   JSON.
+ * @param {string} pathData.namespaceName - namespace name of the to be processed
+ *    value
+ * @param {string} pathData.entryName - entry name of the to be processed
+ *    value
+ */
+function addThunderbirdCompatData({ value, namespaceName, entryName }) {
+  const anchorParts = [entryName];
+  if (value.parameters) {
+    anchorParts.push(
+      ...value.parameters.map((e) => e.name).filter((e) => e != "callback")
+    );
+  }
+  const anchor = anchorParts.join("-").toLowerCase();
+  if (!value.annotations) {
+    value.annotations = [];
+  }
+  value.annotations.push({ api_documentation_url: `${API_DOC_BASE_URL}/${api_doc_branch}/${namespaceName}.html#${anchor}` });
+}
+
+/**
  * Sort nested objects by keys.
  * 
  * @param {any} x - To be sorted element. Skipped if it isn't an object.
@@ -1105,50 +1227,51 @@ async function download(url, filePath) {
   });
 }
 
-/**
- * Add compatibility data from BCD.
- * 
- * @param {any} value - The value to process. Usually an element from a schema JSON.
- * @param {string} owner - The owner of the schema, either "thunderbird" or "firefox".
- * @param {object} pathData - Information about the to be processed value, which
- *    namespace, entry, parameter or property it belongs to.
- */
-function addCompatData(value, owner, pathData) {
-  const { namespaceName, entryName, paramName, propertyName } = pathData;
-  let addApiDoc = true;
-  let entry =
-    bcd.webextensions.api[namespaceName] &&
-    bcd.webextensions.api[namespaceName][entryName];
+// Simple URL validator.
+function validateUrl(url) {
+  return new Promise(resolve => {
+    const request = https.get(url, (response) => {
+      response.resume();
+      resolve(response.statusCode);
+    });
 
-  if (entry && paramName) {
-    entry = entry[paramName];
-    addApiDoc = false;
-  }
-  if (entry && propertyName) {
-    entry = entry[propertyName];
-  }
-  if (!entry) return;
+    request.setTimeout(5000, () => {
+      request.destroy();
+      resolve(408); // Request Timeout
+    });
 
-  let compatData = entry.__compat;
-  if (!compatData) {
-    return;
-  }
+    request.on('error', (err) => {
+      resolve(500);
+    })
+  });
+}
 
-  if (compatData?.mdn_url) {
-    value.mdn_url = compatData.mdn_url;
-  }
-  if (compatData?.support?.thunderbird) {
-    value.support = compatData.support.thunderbird;
-  }
-  if (addApiDoc && owner == "thunderbird") {
-    // Generate Thunderbird API_DOC_URL.
-    const anchorParts = [entryName];
-    if (value.parameters) {
-      anchorParts.push(
-        ...value.parameters.map((e) => e.name).filter((e) => e != "callback")
-      );
+// Simple command line argument parser.
+function parseArgs(argv = process.argv.slice(2)) {
+  const args = {};
+  for (const arg of argv) {
+    if (arg.startsWith('--')) {
+      const [key, value] = arg.slice(2).split('=');
+      if (!value) {
+        args[key] = true;
+      } else {
+        args[key] = value.toLowerCase();
+      }
     }
-    const anchor = anchorParts.join("-").toLowerCase();
-    value.api_documentation_url = `${API_DOC_BASE_URL}/${api_doc_branch}/${namespaceName}.html#${anchor}`;
   }
+  return args;
+}
+
+// Simple helper to retrieve version of current ESR.
+async function getThunderbirdESR() {
+  const {
+    THUNDERBIRD_ESR,
+    THUNDERBIRD_ESR_NEXT,
+  } = await requestJson("https://product-details.mozilla.org/1.0/thunderbird_versions.json");
+
+  const getVersion = (v) => v ? Number(v.split(".")[0]) : null;
+  const ESR = getVersion(THUNDERBIRD_ESR);
+  const NEXT_ESR = getVersion(THUNDERBIRD_ESR_NEXT);
+
+  return NEXT_ESR || ESR;
 }

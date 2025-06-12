@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Simple typings generator for Thunderbird WebExtension schema",
   "main": "get_thunderbird_schema_files.js",
+  "type": "module",
   "bin": {
     "get-thunderbird-schema-files": "get_thunderbird_schema_files.js"
   },
@@ -20,11 +21,11 @@
     "start": "node get_thunderbird_schema_files.js"
   },
   "dependencies": {
-    "@thunderbirdops/webext-compat-data": "^5.5.4-6.2",
+    "@mdn/browser-compat-data": "^6.0.22",
+    "bent": "^7.3.12",
     "comment-json": "^4.2.4",
     "extract-zip": "^2.0.1",
-    "yaml": "^2.7.1",
-    "yargs": "^17.7.2"
+    "yaml": "^2.7.1"
   },
   "engines": {
     "node": ">=18"
