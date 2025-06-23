@@ -1,8 +1,30 @@
 # webext-schemas-generator
 
-**webext-schemas-generator** is a script to process Mozilla WebExtension API schema files. It retrieves them either from [`hg.mozilla.org`](https://hg.mozilla.org) or from a local checkout of the Mozilla Mercurial repository.
+**webext-schemas-generator** is a script to process Mozilla WebExtension API schema files. It retrieves them either from [`hg.mozilla.org`](https://hg.mozilla.org) or from a local checkout of the Mozilla Mercurial repository. The script filters out schemas for APIs not supported by Thunderbird and adds annotations useful for downstream consumers:
 
-The script filters out schemas for APIs not supported by Thunderbird. It then processes the remaining schema files as follows:
+```
+     +--------------+        +-----+       +------------------+
+     | tree/schemas |        | BCD |       | tree/annotations |
+     +--------------+        +-----+       +------------------+
+            |                   |                   |
+            |                   |                   |
+            +----------+        |        +----------+
+                       |        |        |
+                       v        v        v
+                    +-----------------------+
+                    |     webext-schemas    |
+                    +-----------------------+
+                      |      |      |      |
+                      |      |      |      |
+       +--------------+  +---+      +--+   +-----------+
+       |                 |             |               |
+       v                 v             v               v
++-------------+  +---------------+  +-----+  +-------------------+
+| webext-docs |  | webext-linter |  | BCD |  | webext-typescript |
++-------------+  +---------------+  +-----+  +-------------------+
+```
+
+It processes the schema files as follows:
 
 - Resolve and inline `$import` references.
 - Remove entries incompatible with the specified manifest version.
