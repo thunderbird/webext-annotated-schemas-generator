@@ -1,9 +1,9 @@
-import bcd from "@mdn/browser-compat-data" with { type: "json" };
-import jsonUtils from "comment-json";
+import bcd from '@mdn/browser-compat-data' with { type: 'json' };
+import jsonUtils from 'comment-json';
 
-import { getHgFilePath, getHgRevisionLogPath } from "./mozilla.mjs";
-import { validateUrl, readCachedUrl, isOdd } from "./tools.mjs";
-import { COMM_VERSION_FILE, API_DOC_BASE_URL } from "./constants.mjs";
+import { getHgFilePath, getHgRevisionLogPath } from './mozilla.mjs';
+import { validateUrl, readCachedUrl, isOdd } from './tools.mjs';
+import { COMM_VERSION_FILE, API_DOC_BASE_URL } from './constants.mjs';
 
 // For debugging.
 const PROCESS_LOGGER_CONFIG = {
@@ -23,7 +23,7 @@ const PROCESS_LOGGER_CONFIG = {
  * @returns {any} The result of the processed value.
  */
 export function processImports(schema, value = schema) {
-  if (typeof value !== "object") {
+  if (typeof value !== 'object') {
     return value;
   }
 
@@ -34,22 +34,22 @@ export function processImports(schema, value = schema) {
   // Recursive merge of objects, to is modified.
   const mergeObjects = (to, from) => {
     for (const n in from) {
-      if (typeof to[n] != "object") {
+      if (typeof to[n] !== 'object') {
         to[n] = from[n];
-      } else if (typeof from[n] == "object") {
+      } else if (typeof from[n] === 'object') {
         to[n] = mergeObjects(to[n], from[n]);
       }
     }
     return to;
   };
 
-  if (value.hasOwnProperty("$import")) {
+  if (value.hasOwn('$import')) {
     // Assume imports are unique, ignore prepended namespace (lazy me).
-    const id = value.$import.split(".").pop();
+    const id = value.$import.split('.').pop();
     delete value.$import;
 
     // TODO: We skip ManifestBase for now.
-    if (id != "ManifestBase") {
+    if (id !== 'ManifestBase') {
       let imported = getNestedIdOrNamespace(schema, id);
       if (imported) {
         // Do not import top level manifest limits.
@@ -109,13 +109,13 @@ export async function processSchema({
 
   const processLogger = (type, path, key) => {
     if (PROCESS_LOGGER_CONFIG[type]) {
-      let refs = path.map((e) => e.ref);
+      const refs = path.map((e) => e.ref);
       if (key) {
         refs.push(key);
       }
       console.log(
-        ` Process [${revision}] ${type.toUpperCase().padEnd(10, " ")} :`,
-        refs.join("~"),
+        ` Process [${revision}] ${type.toUpperCase().padEnd(10, ' ')} :`,
+        refs.join('~')
       );
     }
   };
@@ -125,12 +125,12 @@ export async function processSchema({
   // of the current path and skip further processing if not. Set the found flag
   // if the searched element was found, and also skip further processing.
   if (searchPath) {
-    processLogger("search", pathElements);
+    processLogger('search', pathElements);
 
     // TODO: Joining path ref elements for comparison seems to be the most simple
     // approach. Should we use a different implementation?
-    const searchPathRef = searchPath.map((e) => e.ref).join("~");
-    const pathRef = pathElements.map((e) => e.ref).join("~");
+    const searchPathRef = searchPath.map((e) => e.ref).join('~');
+    const pathRef = pathElements.map((e) => e.ref).join('~');
 
     if (!searchPathRef.startsWith(pathRef)) {
       return value;
@@ -142,19 +142,19 @@ export async function processSchema({
       // However, the first choice is the original parameter and should be logged
       // as added in TB78. Therefore, if the search ends with "choices~0", search
       // the parent first.
-      if (searchPathRef.endsWith("~items~0~choices~0")) {
-        if (searchPathRef.slice(0, -18) == pathRef) {
+      if (searchPathRef.endsWith('~items~0~choices~0')) {
+        if (searchPathRef.slice(0, -18) === pathRef) {
           searchPath.found = true;
           return value;
         }
-      } else if (searchPathRef.endsWith("~choices~0")) {
-        if (searchPathRef.slice(0, -10) == pathRef) {
+      } else if (searchPathRef.endsWith('~choices~0')) {
+        if (searchPathRef.slice(0, -10) === pathRef) {
           searchPath.found = true;
           return value;
         }
       }
 
-      if (searchPathRef == pathRef) {
+      if (searchPathRef === pathRef) {
         searchPath.found = true;
         return value;
       }
@@ -162,30 +162,30 @@ export async function processSchema({
   }
 
   // If there are no children, return without further processing.
-  if (typeof value !== "object") {
+  if (typeof value !== 'object') {
     return value;
   }
 
   // Handle array properties.
   if (Array.isArray(value)) {
-    processLogger("array", pathElements);
+    processLogger('array', pathElements);
 
-    let filtered = value.filter(isInVersionRange);
+    const filtered = value.filter(isInVersionRange);
     for (let i = 0; i < filtered.length; i++) {
       // The default is to identify nested elements via their index.
-      let newPathElement = { ref: i, type: "idx" };
+      let newPathElement = { ref: i, type: 'idx' };
       switch (pathElements.at(-1)?.ref) {
-        case "choices":
-        case "parameters":
+        case 'choices':
+        case 'parameters':
           // choices and parameters always have to be identified via their index.
           break;
-        case "enum":
-          newPathElement = { ref: filtered[i], type: "value" };
+        case 'enum':
+          newPathElement = { ref: filtered[i], type: 'value' };
           break;
         default:
           // Other elements can be identified via dedicated ref properties, if
           // available.
-          for (let prop of ["name", "id", "namespace", "$extend"]) {
+          for (const prop of ['name', 'id', 'namespace', '$extend']) {
             if (filtered[i][prop]) {
               newPathElement = { ref: filtered[i][prop], type: prop };
             }
@@ -206,7 +206,7 @@ export async function processSchema({
   }
 
   // Handle object properties.
-  processLogger("object", pathElements);
+  processLogger('object', pathElements);
 
   // Reduce object properties with respect to requested manifest version.
   value = Object.keys(value).reduce((accumulator, key) => {
@@ -270,11 +270,11 @@ export async function processSchema({
   //  - fixed:    cloudFile~events~onFileUpload~returns~0~properties~aborted
   if (
     !isOdd(pathElements.length) &&
-    ["returns", "items", "additionalProperties"].includes(
-      pathElements.at(-1)?.ref,
+    ['returns', 'items', 'additionalProperties'].includes(
+      pathElements.at(-1)?.ref
     )
   ) {
-    pathElements.push({ ref: "0", type: "idx" });
+    pathElements.push({ ref: '0', type: 'idx' });
   }
 
   // When searching for enums, the compat data generator uses the annotated enums
@@ -298,17 +298,17 @@ export async function processSchema({
     isOdd(pathElements.length) &&
     ![
       // Skip annotations array elements.
-      "annotations",
+      'annotations',
       // Skip items/returns array elements, they have a fake path element and
       // pathElements.at(-1) is always "0" - child entries will be picked up later.
-      "items",
-      "returns",
+      'items',
+      'returns',
       // Skip patternProperties and additionalProperties, not useful - child
       // entries will be picked up later.
-      "patternProperties",
-      "additionalProperties",
+      'patternProperties',
+      'additionalProperties',
       // Skip filters (TODO: mentioned in mozilla schema but not in mozilla code).
-      "filters",
+      'filters',
     ].includes(pathElements.at(-2)?.ref) &&
     // Skip container extending another container - child entries will be picked
     // up later.
@@ -316,71 +316,71 @@ export async function processSchema({
     // Skip permission container (extend OptionalPermission etc) - permissions are
     // handled by the enum code.
     !(
-      pathElements.length == 5 &&
-      pathElements.at(0).ref == "manifest" &&
-      pathElements.at(1).ref == "types" &&
-      pathElements.at(2).type == "$extend" &&
-      pathElements.at(3).ref == "choices"
+      pathElements.length === 5 &&
+      pathElements.at(0).ref === 'manifest' &&
+      pathElements.at(1).ref === 'types' &&
+      pathElements.at(2).type === '$extend' &&
+      pathElements.at(3).ref === 'choices'
     )
   ) {
     if (
       [
-        "types",
-        "functions",
-        "events",
-        "properties",
-        "extraParameters",
-        "parameters",
-        "choices",
-        "enums",
+        'types',
+        'functions',
+        'events',
+        'properties',
+        'extraParameters',
+        'parameters',
+        'choices',
+        'enums',
       ].includes(pathElements.at(-2)?.ref)
     ) {
-      processLogger("compat", pathElements);
-      if (schemaInfo?.owner == "firefox") {
+      processLogger('compat', pathElements);
+      if (schemaInfo?.owner === 'firefox') {
         await addFirefoxCompatData(config, schemaInfo, value, pathElements);
       }
-      if (schemaInfo?.owner == "thunderbird") {
+      if (schemaInfo?.owner === 'thunderbird') {
         await addThunderbirdCompatData(config, schemaInfo, value, pathElements);
       }
     } else {
       console.log(
-        "UNHANDLED, not adding COMPAT data",
-        pathElements.map((e) => e.ref).join("~"),
+        'UNHANDLED, not adding COMPAT data',
+        pathElements.map((e) => e.ref).join('~')
       );
     }
   }
 
   // Dive into the object's properties.
   value = await Object.keys(value).reduce(async (accumulatorPromise, key) => {
-    let accumulator = await accumulatorPromise;
-    processLogger("property", pathElements, key);
+    const accumulator = await accumulatorPromise;
+    processLogger('property', pathElements, key);
     let v = value[key];
 
     v = await processSchema({
       config,
       value: value[key],
       schemaInfo,
-      fullPath: [...pathElements, { ref: key, type: "property" }],
+      fullPath: [...pathElements, { ref: key, type: 'property' }],
       searchPath,
       revision,
     });
 
     switch (key) {
-      case "min_manifest_version":
-      case "max_manifest_version":
+      case 'min_manifest_version':
+      case 'max_manifest_version':
         // Do not include manifest limits in clean per-single-manifest schema
         // files.
         break;
-      case "description":
-      case "deprecated":
-        if (typeof v === "string") {
+      case 'description':
+      case 'deprecated':
+        if (typeof v === 'string') {
           // Newer schema files use the Firefox notation directly, but older
           // ones may still use the deprecated reStructuredText notations.
           // Fix any remaining deprecated notation.
-          v = v.replace(/``(.+?)``/g, "<val>$1</val>");
-          v = v.replace(/:doc:`(.*?)`/g, "$(doc:$1)");
-          v = v.replace(/:ref:`(.*?)`/g, "$(ref:$1)");
-          v = v.replace(/:permission:`(.*?)`/g, "<permission>$1</permission>");
+          v = v.replace(/``(.+?)``/g, '<val>$1</val>');
+          v = v.replace(/:doc:`(.*?)`/g, '$(doc:$1)');
+          v = v.replace(/:ref:`(.*?)`/g, '$(ref:$1)');
+          v = v.replace(/:permission:`(.*?)`/g, '<permission>$1</permission>');
 
           // Replace URLs.
           v = v.replace(
@@ -392,12 +392,13 @@ export async function processSchema({
                 return match; // If no URL found, leave it as-is
               }
               return `<a href='${url}'>${label}</a>`;
-            },
+            }
           );
 
           // Replace single back ticks.
-          v = v.replace(/`(.+?)`/g, "<val>$1</val>");
+          v = v.replace(/`(.+?)`/g, '<val>$1</val>');
         }
+        break;
       default:
         accumulator[key] = v;
     }
@@ -433,7 +434,7 @@ export async function processSchema({
  * @returns {any} The result of the processed value.
  */
 function getNestedIdOrNamespace(value, searchString) {
-  if (typeof value !== "object") {
+  if (typeof value !== 'object') {
     return undefined;
   }
 
@@ -448,10 +449,10 @@ function getNestedIdOrNamespace(value, searchString) {
   }
 
   // An object
-  if (value.namespace == searchString) {
+  if (value.namespace === searchString) {
     return value;
   }
-  if (value.id == searchString) {
+  if (value.id === searchString) {
     return value;
   }
   for (const element of Object.values(value)) {
@@ -476,7 +477,7 @@ function getNestedIdOrNamespace(value, searchString) {
  */
 async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
   const [namespaceName, , entryName, , paramName] = searchPath.map(
-    (e) => e.ref,
+    (e) => e.ref
   );
 
   let entry =
@@ -485,9 +486,11 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
   if (entry && paramName) {
     entry = entry[paramName];
   }
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
 
-  let compatData = entry.__compat;
+  const compatData = entry.__compat;
   if (compatData) {
     if (compatData?.mdn_url) {
       if (!value.annotations) {
@@ -499,12 +502,12 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
       if (!value.annotations) {
         value.annotations = [];
       }
-      for (let key of Object.keys(compatData?.support?.firefox)) {
+      for (const key of Object.keys(compatData?.support?.firefox)) {
         switch (key) {
-          case "version_added":
-          case "version_removed": {
+          case 'version_added':
+          case 'version_removed': {
             // Do not override explicitly specified values from annotation files.
-            if (!value.annotations.some((a) => a.hasOwnProperty(key))) {
+            if (!value.annotations.some((a) => a.hasOwn(key))) {
               // If Thunderbird globally specifies a higher version (in the root
               // of the schema) then Firefox/BCD, use that instead.
               const firefox_version = compatData.support.firefox[key];
@@ -512,7 +515,7 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
               value.annotations.push({
                 [key]:
                   !isNaN(parseInt(thunderbird_version, 10)) &&
-                  (firefox_version == true ||
+                  (firefox_version === true ||
                     isNaN(parseInt(firefox_version, 10)) ||
                     parseInt(thunderbird_version, 10) >
                       parseInt(firefox_version, 10))
@@ -522,7 +525,7 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
             }
             break;
           }
-          case "notes": {
+          case 'notes': {
             const notes = Array.isArray(compatData.support.firefox.notes)
               ? compatData.support.firefox.notes
               : [compatData.support.firefox.notes];
@@ -550,19 +553,19 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
  */
 async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
   // Add api_documentation_url if this is the types/events/functions level.
-  if (searchPath.length == 3) {
+  if (searchPath.length === 3) {
     const [namespaceName, , entryName] = searchPath.map((e) => e.ref);
     const anchorParts = [entryName];
     if (value.parameters) {
       anchorParts.push(
-        ...value.parameters.map((e) => e.name).filter((e) => e != "callback"),
+        ...value.parameters.map((e) => e.name).filter((e) => e !== 'callback')
       );
     }
-    const anchor = anchorParts.join("-").toLowerCase();
+    const anchor = anchorParts.join('-').toLowerCase();
     const api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
     const status = await validateUrl(api_documentation_url);
-    if (status != 200) {
-      console.log(" - problematic URL found:", status, api_documentation_url);
+    if (status !== 200) {
+      console.log(' - problematic URL found:', status, api_documentation_url);
     } else {
       if (!value.annotations) {
         value.annotations = [];
@@ -576,12 +579,12 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
   }
 
   // Generate compat data from schema files if version_added was not yet annotated.
-  if (!value.annotations.find((a) => a.hasOwnProperty("version_added"))) {
+  if (!value.annotations.find((a) => a.hasOwn('version_added'))) {
     value.annotations.push({
       version_added: await extractThunderbirdCompatData(
         config,
         schemaInfo.file.name,
-        searchPath,
+        searchPath
       ),
     });
   }
@@ -594,14 +597,18 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
  * @param {ConfigData} config - Global config data.
  */
 function getApiDocSlug(config) {
-  if (config.docRelease == "beta")
+  if (config.docRelease === 'beta') {
     return `${API_DOC_BASE_URL}/beta-mv${config.manifest_version}`;
-  if (config.docRelease == "release")
+  }
+  if (config.docRelease === 'release') {
     return `${API_DOC_BASE_URL}/release-mv${config.manifest_version}`;
-  if (config.docRelease == "esr")
+  }
+  if (config.docRelease === 'esr') {
     return `${API_DOC_BASE_URL}/esr-mv${config.manifest_version}`;
-  if (config.docRelease.startsWith("esr"))
+  }
+  if (config.docRelease.startsWith('esr')) {
     return `${API_DOC_BASE_URL}/${config.docRelease.substring(3)}-esr-mv${config.manifest_version}`;
+  }
   return `${API_DOC_BASE_URL}/latest`;
 }
 
@@ -616,17 +623,17 @@ function getApiDocSlug(config) {
  * @returns {boolean}
  */
 async function testRevision(config, fileName, searchPath, revision) {
-  let schema_url = getHgFilePath(
+  const schema_url = getHgFilePath(
     `comm-${config.release}`,
     `mail/components/extensions/schemas/${fileName}`,
-    revision,
+    revision
   );
 
   // Read and process the schema belonging to the requested revision.
-  let schema = processImports(
+  const schema = processImports(
     jsonUtils.parse(
-      await readCachedUrl(schema_url, { temporary: revision == "tip" }),
-    ),
+      await readCachedUrl(schema_url, { temporary: revision === 'tip' })
+    )
   );
   const searchPathClone = [...searchPath];
 
@@ -652,25 +659,25 @@ async function testRevision(config, fileName, searchPath, revision) {
  *    API element, or false.
  */
 async function extractThunderbirdCompatData(config, fileName, searchPath) {
-  let rev_url = getHgRevisionLogPath(
+  const rev_url = getHgRevisionLogPath(
     `comm-${config.release}`,
     `mail/components/extensions/schemas/${fileName}`,
-    config.commRev,
+    config.commRev
   );
-  let rev = jsonUtils.parse(
-    await readCachedUrl(rev_url, { temporary: config.commRev == "tip" }),
+  const rev = jsonUtils.parse(
+    await readCachedUrl(rev_url, { temporary: config.commRev === 'tip' })
   );
 
   for (let i = rev.entries.length; i > 0; i--) {
-    let revision = rev.entries.at(i - 1).node;
-    let result = await testRevision(config, fileName, searchPath, revision);
+    const revision = rev.entries.at(i - 1).node;
+    const result = await testRevision(config, fileName, searchPath, revision);
     if (result) {
-      let version_url = getHgFilePath(
+      const version_url = getHgFilePath(
         `comm-${config.release}`,
         COMM_VERSION_FILE,
-        revision,
+        revision
       );
-      return readCachedUrl(version_url).then((v) => v.split(".").at(0));
+      return readCachedUrl(version_url).then((v) => v.split('.').at(0));
     }
   }
 

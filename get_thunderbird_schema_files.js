@@ -8,11 +8,11 @@
  * Author: John Bieling
  */
 
-import extract from "extract-zip";
-import fs from "node:fs/promises";
-import jsonUtils from "comment-json";
-import os from "node:os";
-import path from "node:path";
+import extract from 'extract-zip';
+import fs from 'node:fs/promises';
+import jsonUtils from 'comment-json';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
   downloadUrl,
@@ -21,7 +21,7 @@ import {
   sortKeys,
   validateUrl,
   writePrettyJSONFile,
-} from "./modules/tools.mjs";
+} from './modules/tools.mjs';
 
 import {
   checkoutSourceFile,
@@ -29,7 +29,7 @@ import {
   getCurrentThunderbirdESR,
   getHgFolderZipPath,
   getMozillaRevFromGeckoRevFile,
-} from "./modules/mozilla.mjs";
+} from './modules/mozilla.mjs';
 
 import {
   COMM_SCHEMA_FOLDERS,
@@ -37,9 +37,10 @@ import {
   COMM_VERSION_FILE,
   LOCALE_FILES,
   MOZILLA_SCHEMA_FOLDERS,
-} from "./modules/constants.mjs";
+  HELP_SCREEN,
+} from './modules/constants.mjs';
 
-import { processImports, processSchema } from "./modules/process.mjs";
+import { processImports, processSchema } from './modules/process.mjs';
 
 // The config object is used as a global state, not limited to passed in command
 // line arguments.
@@ -58,22 +59,22 @@ if (
 
 async function main() {
   // Some additional sanity checks.
-  if (!["2", "3"].includes(`${config.manifest_version}`)) {
+  if (!['2', '3'].includes(`${config.manifest_version}`)) {
     console.log(`Unsupported Manifest Version: <${config.manifest_version}>`);
     return;
   }
 
   config.tempFolder = await fs.mkdtemp(
-    path.join(os.tmpdir(), "webext-schemas-generator"),
+    path.join(os.tmpdir(), 'webext-schemas-generator')
   );
 
   // Download schema files, if requested.
   if (config.release) {
-    if (config.release == "esr") {
-      let esr = await getCurrentThunderbirdESR();
+    if (config.release === 'esr') {
+      const esr = await getCurrentThunderbirdESR();
       if (!esr) {
         throw new Error(
-          "Unable to determine version of current Thunderbird ESR.",
+          'Unable to determine version of current Thunderbird ESR.'
         );
       }
       config.release = `esr${esr}`;
@@ -91,7 +92,7 @@ async function main() {
     config.source = await downloadFilesFromMozilla(config.release);
   } else {
     // Set the release based on the provided folder name.
-    config.release = path.basename(config.source).split("-")[1];
+    config.release = path.basename(config.source).split('-')[1];
     config.docRelease = config.release;
 
     console.log(` Downloading files from Mozilla ...`);
@@ -107,26 +108,26 @@ async function main() {
 
   // Extract and save the locale strings for permissions.
   const permissionStrings = await extractPermissionStrings(config.source);
-  const permissionStringsFile = path.join(config.output, "permissions.ftl");
+  const permissionStringsFile = path.join(config.output, 'permissions.ftl');
   await fs.writeFile(
     permissionStringsFile,
-    permissionStrings.join("\n") + "\n",
-    "utf-8",
+    `${permissionStrings.join('\n')}\n`,
+    'utf-8'
   );
 
   console.log(` Validating used URLs ...`);
 
   config.urlReplacements = jsonUtils.parse(
     await fs.readFile(
-      path.join(config.source, "comm", COMM_URL_PLACEHOLDER_FILE),
-      "utf-8",
-    ),
+      path.join(config.source, 'comm', COMM_URL_PLACEHOLDER_FILE),
+      'utf-8'
+    )
   );
 
-  for (let [placeholder, url] of Object.entries(config.urlReplacements)) {
+  for (const [placeholder, url] of Object.entries(config.urlReplacements)) {
     const status = await validateUrl(url);
-    if (status != 200) {
-      console.log(" - problematic URL found:", status, placeholder, url);
+    if (status !== 200) {
+      console.log(' - problematic URL found:', status, placeholder, url);
     }
   }
 
@@ -136,60 +137,48 @@ async function main() {
 
   // Parse the toolkit schema files.
   await readSchemaFiles(
-    "firefox",
+    'firefox',
     await getJsonFiles(
-      path.join(
-        config.source,
-        "toolkit",
-        "components",
-        "extensions",
-        "schemas",
-      ),
-    ),
+      path.join(config.source, 'toolkit', 'components', 'extensions', 'schemas')
+    )
   );
 
   // Parse the browser schema files.
   await readSchemaFiles(
-    "firefox",
+    'firefox',
     await getJsonFiles(
-      path.join(
-        config.source,
-        "browser",
-        "components",
-        "extensions",
-        "schemas",
-      ),
-    ),
+      path.join(config.source, 'browser', 'components', 'extensions', 'schemas')
+    )
   );
 
   // Parse Thunderbird's own schema files.
   await readSchemaFiles(
-    "thunderbird",
+    'thunderbird',
     await getJsonFiles(
       path.join(
         config.source,
-        "comm",
-        "mail",
-        "components",
-        "extensions",
-        "schemas",
-      ),
-    ),
+        'comm',
+        'mail',
+        'components',
+        'extensions',
+        'schemas'
+      )
+    )
   );
 
   // Add information from annotation files.
   await readAnnotationFiles(
-    ["thunderbird", "firefox"],
+    ['thunderbird', 'firefox'],
     await getJsonFiles(
       path.join(
         config.source,
-        "comm",
-        "mail",
-        "components",
-        "extensions",
-        "annotations",
-      ),
-    ),
+        'comm',
+        'mail',
+        'components',
+        'extensions',
+        'annotations'
+      )
+    )
   );
 
   // Filter for supported schema entries, as defined by our annotation files.
@@ -197,7 +186,7 @@ async function main() {
   // manually by specifying version_added.
   config.schemaInfos = config.schemaInfos.flatMap((schemaInfo) => {
     // Keep Thunderbird APIs.
-    if (schemaInfo.owner == "thunderbird") {
+    if (schemaInfo.owner === 'thunderbird') {
       return [schemaInfo];
     }
     // Remove unsupported entries.
@@ -222,11 +211,10 @@ async function main() {
         j.types &&
         j.types.some(
           (t) =>
-            ["WebExtensionManifest"].includes(t.$extend) &&
+            ['WebExtensionManifest'].includes(t.$extend) &&
             Object.values(t.properties).some(
-              (p) =>
-                p.annotations && p.annotations.some((a) => a.version_added),
-            ),
+              (p) => p.annotations && p.annotations.some((a) => a.version_added)
+            )
         )
       ) {
         return true;
@@ -238,19 +226,19 @@ async function main() {
         j.types.some(
           (t) =>
             [
-              "Permission",
-              "OptionalPermission",
-              "PermissionNoPrompt",
-              "OptionalPermissionNoPrompt",
+              'Permission',
+              'OptionalPermission',
+              'PermissionNoPrompt',
+              'OptionalPermissionNoPrompt',
             ].includes(t.$extend) &&
             t.choices.some(
               (c) =>
                 c.enums &&
                 Object.values(c.enums).some(
                   (p) =>
-                    p.annotations && p.annotations.some((a) => a.version_added),
-                ),
-            ),
+                    p.annotations && p.annotations.some((a) => a.version_added)
+                )
+            )
         )
       ) {
         return true;
@@ -279,28 +267,28 @@ async function main() {
   // Add information about application version.
   const versionFilePath = path.join(
     config.source,
-    "comm",
-    ...COMM_VERSION_FILE.split("/"),
+    'comm',
+    ...COMM_VERSION_FILE.split('/')
   );
   const applicationVersion = await fs
-    .readFile(versionFilePath, "utf-8")
+    .readFile(versionFilePath, 'utf-8')
     .then((v) => v.trim());
 
   const githubWorkflowOutput = process.env.GITHUB_OUTPUT;
   if (githubWorkflowOutput) {
     await fs.appendFile(
       githubWorkflowOutput,
-      `tag_name=${applicationVersion}\n`,
+      `tag_name=${applicationVersion}\n`
     );
   }
   for (const schemaInfo of config.schemaInfos) {
-    let manifestNamespace = schemaInfo.schema.find(
-      (e) => e.namespace == "manifest",
+    const manifestNamespace = schemaInfo.schema.find(
+      (e) => e.namespace === 'manifest'
     );
     if (manifestNamespace) {
       manifestNamespace.applicationVersion = applicationVersion;
     } else {
-      schemaInfo.schema.push({ namespace: "manifest", applicationVersion });
+      schemaInfo.schema.push({ namespace: 'manifest', applicationVersion });
     }
   }
 
@@ -309,7 +297,7 @@ async function main() {
     const output_file_name = schemaInfo.file.name;
     await writePrettyJSONFile(
       path.join(config.output, output_file_name),
-      sortKeys(schemaInfo.schema),
+      sortKeys(schemaInfo.schema)
     );
   }
 
@@ -321,15 +309,15 @@ async function main() {
 
 async function getMatchingRevisions(release) {
   if (!release) {
-    throw new Error("Missing release parameter in getMatchingRevisions()");
+    throw new Error('Missing release parameter in getMatchingRevisions()');
   }
 
   const commRev =
-    release == "central" ? "tip" : await getCommRevisionFromBuildHub(release);
+    release === 'central' ? 'tip' : await getCommRevisionFromBuildHub(release);
 
   const mozillaRev =
-    release == "central"
-      ? "tip"
+    release === 'central'
+      ? 'tip'
       : await getMozillaRevFromGeckoRevFile(release, commRev);
 
   return { commRev, mozillaRev };
@@ -346,34 +334,34 @@ async function getMatchingRevisions(release) {
  */
 async function downloadFilesFromMozilla(release) {
   if (!release) {
-    throw new Error("Missing release parameter in downloadFilesFromMozilla()");
+    throw new Error('Missing release parameter in downloadFilesFromMozilla()');
   }
 
   const folders = new Set();
 
   // Download COMM schema files.
-  for (let schemaFolder of COMM_SCHEMA_FOLDERS) {
+  for (const schemaFolder of COMM_SCHEMA_FOLDERS) {
     const repository = `comm-${release}`;
     const zipFileName = `${release}-${schemaFolder.zipFileNameSuffix}.zip`;
     const zipFilePath = path.join(config.tempFolder, zipFileName);
     try {
       await downloadUrl(
         getHgFolderZipPath(repository, schemaFolder.folderPath, config.commRev),
-        zipFilePath,
+        zipFilePath
       );
     } catch (ex) {
-      throw new Error("Download failed, try again later");
+      throw new Error('Download failed, try again later');
     }
     console.log(` - unpacking ${zipFileName} ...`);
     await extract(path.resolve(zipFilePath), {
       dir: path.resolve(config.tempFolder),
-      onEntry: (entry) => folders.add(entry.fileName.split("/")[0]),
+      onEntry: (entry) => folders.add(entry.fileName.split('/')[0]),
     });
     await fs.unlink(zipFilePath);
   }
 
   // Download MOZILLA schema files.
-  for (let schemaFolder of MOZILLA_SCHEMA_FOLDERS) {
+  for (const schemaFolder of MOZILLA_SCHEMA_FOLDERS) {
     const repository = `mozilla-${release}`;
     const zipFileName = `${release}-${schemaFolder.zipFileNameSuffix}.zip`;
     const zipFilePath = path.join(config.tempFolder, zipFileName);
@@ -382,17 +370,17 @@ async function downloadFilesFromMozilla(release) {
         getHgFolderZipPath(
           repository,
           schemaFolder.folderPath,
-          config.mozillaRev,
+          config.mozillaRev
         ),
-        zipFilePath,
+        zipFilePath
       );
     } catch (ex) {
-      throw new Error("Download failed, try again later");
+      throw new Error('Download failed, try again later');
     }
     console.log(` - unpacking ${zipFileName} ...`);
     await extract(path.resolve(zipFilePath), {
       dir: path.resolve(config.tempFolder),
-      onEntry: (entry) => folders.add(entry.fileName.split("/")[0]),
+      onEntry: (entry) => folders.add(entry.fileName.split('/')[0]),
     });
     await fs.unlink(zipFilePath);
   }
@@ -400,14 +388,14 @@ async function downloadFilesFromMozilla(release) {
   // Find the mozilla-* folder and rename /comm-* to /comm.
   let mozillaFolder;
   for (const folder of folders) {
-    const parts = folder.split("-").map((e) => e.toLowerCase());
-    if (parts[0] == "mozilla") {
+    const parts = folder.split('-').map((e) => e.toLowerCase());
+    if (parts[0] === 'mozilla') {
       mozillaFolder = folder;
     }
-    if (parts[0] == "comm") {
+    if (parts[0] === 'comm') {
       await fs.rename(
         path.join(config.tempFolder, folder),
-        path.join(config.tempFolder, "comm"),
+        path.join(config.tempFolder, 'comm')
       );
     }
   }
@@ -415,26 +403,26 @@ async function downloadFilesFromMozilla(release) {
   // Check if all needed folders are available.
   try {
     await fs.access(path.join(config.tempFolder, mozillaFolder));
-    await fs.access(path.join(config.tempFolder, "comm"));
+    await fs.access(path.join(config.tempFolder, 'comm'));
   } catch (ex) {
-    throw new Error("Download of schema files did not succeed!");
+    throw new Error('Download of schema files did not succeed!');
   }
 
   // Move /comm inside of /mozilla.
   await fs.rename(
-    path.join(config.tempFolder, "comm"),
-    path.join(config.tempFolder, mozillaFolder, "comm"),
+    path.join(config.tempFolder, 'comm'),
+    path.join(config.tempFolder, mozillaFolder, 'comm')
   );
 
   // Download locale files.
-  for (let localeFile of LOCALE_FILES) {
+  for (const localeFile of LOCALE_FILES) {
     const repository = `${localeFile.branch}-${release}`;
     await checkoutSourceFile(
       config,
       repository,
       localeFile.filePath,
-      localeFile.branch == "comm" ? config.commRev : config.mozillaRev,
-      mozillaFolder,
+      localeFile.branch === 'comm' ? config.commRev : config.mozillaRev,
+      mozillaFolder
     );
   }
 
@@ -446,7 +434,7 @@ async function downloadFilesFromMozilla(release) {
       repository,
       COMM_VERSION_FILE,
       config.commRev,
-      mozillaFolder,
+      mozillaFolder
     );
   }
 
@@ -464,29 +452,29 @@ async function downloadFilesFromMozilla(release) {
  */
 async function extractPermissionStrings(sourceFolder) {
   const permissionStrings = [];
-  const prefix = "webext-perms-description-";
+  const prefix = 'webext-perms-description-';
 
-  for (let localeFile of LOCALE_FILES) {
-    const parts = localeFile.filePath.split("/");
+  for (const localeFile of LOCALE_FILES) {
+    const parts = localeFile.filePath.split('/');
     // Files from comm-* repositories are inside the comm/ folder in the local
     // source directory.
-    if (localeFile.branch == "comm") {
-      parts.unshift("comm");
+    if (localeFile.branch === 'comm') {
+      parts.unshift('comm');
     }
     const localeFilePath = path.join(sourceFolder, ...parts);
-    const content = await fs.readFile(localeFilePath, "utf-8");
-    const lines = content.split("\n");
+    const content = await fs.readFile(localeFilePath, 'utf-8');
+    const lines = content.split('\n');
     const matchedLines = lines
       .filter((line) => line.startsWith(prefix))
       .map((line) => {
         // Remove numbers appended to the keys, which sometimes are needed to
         // deal with locale updates.
-        const [key, ...rest] = line.split("=");
-        let sanitizedKey = key.replace(/[\d\s]+$/, "");
-        let sanitizedValue = rest
-          .join("=")
+        const [key, ...rest] = line.split('=');
+        const sanitizedKey = key.replace(/[\d\s]+$/, '');
+        const sanitizedValue = rest
+          .join('=')
           .trim()
-          .replaceAll("{ -brand-short-name }", "Thunderbird");
+          .replaceAll('{ -brand-short-name }', 'Thunderbird');
         return `${sanitizedKey} = ${sanitizedValue}`;
       });
     permissionStrings.push(...matchedLines);
@@ -504,7 +492,7 @@ async function extractPermissionStrings(sourceFolder) {
 async function readSchemaFiles(owner, files) {
   for (const file of files) {
     const schema = jsonUtils.parse(
-      await fs.readFile(path.join(file.path, file.name), "utf-8"),
+      await fs.readFile(path.join(file.path, file.name), 'utf-8')
     );
     config.schemaInfos.push({ file, schema, owner });
   }
@@ -520,13 +508,13 @@ async function readSchemaFiles(owner, files) {
  */
 async function readAnnotationFiles(owners, files) {
   for (const file of files) {
-    for (let owner of owners) {
-      let schemaInfo = config.schemaInfos.find(
-        (e) => e.owner == owner && e.file.name == file.name,
+    for (const owner of owners) {
+      const schemaInfo = config.schemaInfos.find(
+        (e) => e.owner === owner && e.file.name === file.name
       );
       if (schemaInfo) {
         const json = jsonUtils.parse(
-          await fs.readFile(path.join(file.path, file.name), "utf-8"),
+          await fs.readFile(path.join(file.path, file.name), 'utf-8')
         );
         await mergeAnnotations(schemaInfo.schema, json, file.path);
         break;
@@ -546,59 +534,59 @@ async function readAnnotationFiles(owners, files) {
  */
 async function mergeAnnotations(schema, annotation, basePath) {
   if (
-    typeof schema != typeof annotation ||
-    Array.isArray(schema) != Array.isArray(annotation)
+    typeof schema !== typeof annotation ||
+    Array.isArray(schema) !== Array.isArray(annotation)
   ) {
     throw new Error(
-      "Unexpected type mismatch between schema entry and annotation entry",
+      'Unexpected type mismatch between schema entry and annotation entry'
     );
   }
 
   if (Array.isArray(annotation)) {
     // Array with objects which are identified by $extend, namespace, name, or id.
-    for (let aEntry of annotation) {
+    for (const aEntry of annotation) {
       // If the annotation specified min/max_manifest_version, will match only
       // against the same entry in the schema, otherwise match against all entries
       // in the schema.
-      let sEntries = schema
+      const sEntries = schema
         .filter(
           (e) =>
-            (aEntry.namespace && e.namespace == aEntry.namespace) ||
-            (aEntry.$extend && e.$extend == aEntry.$extend) ||
-            (aEntry.name && e.name == aEntry.name) ||
-            (aEntry.id && e.id == aEntry.id),
+            (aEntry.namespace && e.namespace === aEntry.namespace) ||
+            (aEntry.$extend && e.$extend === aEntry.$extend) ||
+            (aEntry.name && e.name === aEntry.name) ||
+            (aEntry.id && e.id === aEntry.id)
         )
         .filter(
           (e) =>
             (!aEntry.min_manifest_version ||
-              aEntry.min_manifest_version == e.min_manifest_version) &&
+              aEntry.min_manifest_version === e.min_manifest_version) &&
             (!aEntry.max_manifest_version ||
-              aEntry.max_manifest_version == e.max_manifest_version),
+              aEntry.max_manifest_version === e.max_manifest_version)
         );
       if (sEntries.length) {
-        for (let sEntry of sEntries) {
+        for (const sEntry of sEntries) {
           await mergeAnnotations(sEntry, aEntry, basePath);
         }
       } else {
         throw new Error(`Unmatched entry: ${JSON.stringify(aEntry, null, 2)}`);
       }
     }
-  } else if (typeof annotation == "object") {
+  } else if (typeof annotation === 'object') {
     for (const aEntry of Object.keys(annotation)) {
       if (!schema[aEntry]) {
         await expandAnnotations(aEntry, annotation, basePath);
         schema[aEntry] = annotation[aEntry];
       } else {
-        if (aEntry == "choices") {
+        if (aEntry === 'choices') {
           // Choices must be matched by position.
-          if (schema[aEntry].length != annotation[aEntry].length) {
-            throw new Error("Choices array with non-matching sizes: ", aEntry);
+          if (schema[aEntry].length !== annotation[aEntry].length) {
+            throw new Error('Choices array with non-matching sizes: ', aEntry);
           }
           for (let i = 0; i < annotation[aEntry].length; i++) {
             await mergeAnnotations(
               schema[aEntry][i],
               annotation[aEntry][i],
-              basePath,
+              basePath
             );
           }
         } else {
@@ -620,34 +608,34 @@ async function mergeAnnotations(schema, annotation, basePath) {
  */
 async function expandAnnotations(aEntry, annotation, basePath) {
   switch (aEntry) {
-    case "annotations":
+    case 'annotations':
       for (const aObj of annotation[aEntry]) {
         if (!aObj.code || Array.isArray(aObj.code)) {
           continue;
         }
 
         if (!aObj.type) {
-          if (aObj.code.endsWith(".js") || aObj.code.endsWith(".mjs")) {
-            aObj.type = "JavaScript";
+          if (aObj.code.endsWith('.js') || aObj.code.endsWith('.mjs')) {
+            aObj.type = 'JavaScript';
           }
-          if (aObj.code.endsWith(".css")) {
-            aObj.type = "CSS";
+          if (aObj.code.endsWith('.css')) {
+            aObj.type = 'CSS';
           }
-          if (aObj.code.endsWith(".json")) {
-            aObj.type = "JSON";
+          if (aObj.code.endsWith('.json')) {
+            aObj.type = 'JSON';
           }
         }
-        const code = await fs.readFile(path.join(basePath, aObj.code), "utf-8");
-        aObj.code = code.replaceAll("\r", "").split("\n");
+        const code = await fs.readFile(path.join(basePath, aObj.code), 'utf-8');
+        aObj.code = code.replaceAll('\r', '').split('\n');
       }
       break;
-    case "enums":
+    case 'enums':
       for (const enumName of Object.keys(annotation[aEntry])) {
-        if (annotation[aEntry][enumName]["annotations"]) {
+        if (annotation[aEntry][enumName]['annotations']) {
           await expandAnnotations(
-            "annotations",
+            'annotations',
             annotation[aEntry][enumName],
-            basePath,
+            basePath
           );
         }
       }
