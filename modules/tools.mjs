@@ -52,25 +52,31 @@ export async function writePrettyJSONFile(filePath, json) {
  * Simple helper function to check if a URL is valid.
  *
  * @param {string} url
+ * @param {string} [domainName] - Optional domain name for logging purposes
  *
- * @returns {integer} status code of the request to access the URL
+ * @returns {boolean} true if the URL returns a successful response, false otherwise
  */
-export function validateUrl(url) {
-  return new Promise((resolve) => {
-    const request = https.get(url, (response) => {
-      response.resume();
-      resolve(response.statusCode);
+export async function validateUrl(url, domainName = '') {
+  const domainPart = domainName ? `${domainName} ` : '';
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
     });
 
-    request.setTimeout(5000, () => {
-      request.destroy();
-      resolve(408); // Request Timeout
-    });
-
-    request.on('error', () => {
-      resolve(500);
-    });
-  });
+    if (response.ok) {
+      return true;
+    } else {
+      console.log(
+        ` - problematic URL found: ${response.status} ${domainPart}${url}`
+      );
+      return false;
+    }
+  } catch (error) {
+    console.log(` - problematic URL found: network error ${domainPart}${url}`);
+    return false;
+  }
 }
 
 /**

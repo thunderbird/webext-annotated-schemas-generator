@@ -38,7 +38,6 @@ import {
   HELP_SCREEN,
   LOCALE_FILES,
   MOZILLA_SCHEMA_FOLDERS,
-  HELP_SCREEN,
 } from './modules/constants.mjs';
 
 import { processImports, processSchema } from './modules/process.mjs';
@@ -125,11 +124,8 @@ async function main() {
     )
   );
 
-  for (const [placeholder, url] of Object.entries(config.urlReplacements)) {
-    const status = await validateUrl(url);
-    if (status !== 200) {
-      console.log(' - problematic URL found:', status, placeholder, url);
-    }
+  for (const [domainName, url] of Object.entries(config.urlReplacements)) {
+    await validateUrl(url, domainName);
   }
 
   console.log(` Parsing schema files ...`);

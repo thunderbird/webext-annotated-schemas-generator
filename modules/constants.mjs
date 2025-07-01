@@ -1,6 +1,6 @@
 export const API_DOC_BASE_URL = 'https://webextension-api.thunderbird.net/en';
 
-export const BUILD_HUB_URL = 'buildhub.moz.tools';
+export const BUILD_HUB_URL = 'https://buildhub.moz.tools';
 
 export const COMM_GECKO_REV = '.gecko_rev.yml';
 

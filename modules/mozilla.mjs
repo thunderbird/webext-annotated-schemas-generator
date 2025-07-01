@@ -1,7 +1,5 @@
 import bent from 'bent';
 import fs from 'node:fs/promises';
-import https from 'https';
-import jsonUtils from 'comment-json';
 import path from 'node:path';
 import yaml from 'yaml';
 
@@ -99,53 +97,31 @@ export function getHgRevisionLogPath(repository, filePath, rev) {
  */
 export async function getCommRevisionFromBuildHub(release) {
   try {
-    const postData = JSON.stringify({
-      size: 1,
-      query: { term: { 'source.tree': `comm-${release}` } },
-      sort: [{ 'download.date': { order: 'desc' } }],
-    });
-
-    const options = {
-      hostname: BUILD_HUB_URL,
-      port: 443,
-      path: '/api/search',
-      method: 'POST',
-    };
-
     console.log(
       ` - requesting latest revision for comm-${release} from ${BUILD_HUB_URL} ...`
     );
 
-    // Create the HTTP request.
-    const task = Promise.withResolvers();
-    const req = https.request(options, (res) => {
-      let responseData = '';
-
-      // A chunk of data has been received.
-      res.on('data', (chunk) => {
-        responseData += chunk;
-      });
-
-      // The whole response has been received.
-      res.on('end', () => {
-        task.resolve(responseData);
-      });
+    const response = await fetch(`${BUILD_HUB_URL}/api/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        size: 1,
+        query: { term: { 'source.tree': `comm-${release}` } },
+        sort: [{ 'download.date': { order: 'desc' } }],
+      }),
     });
 
-    // Handle errors.
-    req.on('error', (error) => {
-      task.reject(error.message);
-    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
 
-    // Send the POST data.
-    req.write(postData);
-    req.end();
-
-    const data = jsonUtils.parse(await task.promise);
+    const data = await response.json();
     return data.hits.hits[0]._source.source.revision;
-  } catch (ex) {
-    console.error(ex);
-    throw new Error(`Failed to retrieve latest revision from ${BUILD_HUB_URL}`);
+  } catch (err) {
+    console.error(err);
+    throw new Error(
+      `Failed to retrieve latest revision from ${BUILD_HUB_URL}: ${err}`
+    );
   }
 }
 
