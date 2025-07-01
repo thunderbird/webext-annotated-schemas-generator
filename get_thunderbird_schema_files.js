@@ -38,7 +38,6 @@ import {
   HELP_SCREEN,
   LOCALE_FILES,
   MOZILLA_SCHEMA_FOLDERS,
-  HELP_SCREEN,
 } from './modules/constants.mjs';
 
 import { processImports, processSchema } from './modules/process.mjs';

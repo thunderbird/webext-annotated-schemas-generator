@@ -43,7 +43,7 @@ export function processImports(schema, value = schema) {
     return to;
   };
 
-  if (value.hasOwn('$import')) {
+  if (Object.hasOwn(value, '$import')) {
     // Assume imports are unique, ignore prepended namespace (lazy me).
     const id = value.$import.split('.').pop();
     delete value.$import;
@@ -507,7 +507,7 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
           case 'version_added':
           case 'version_removed': {
             // Do not override explicitly specified values from annotation files.
-            if (!value.annotations.some((a) => a.hasOwn(key))) {
+            if (!value.annotations.some((a) => Object.hasOwn(a, key))) {
               // If Thunderbird globally specifies a higher version (in the root
               // of the schema) then Firefox/BCD, use that instead.
               const firefox_version = compatData.support.firefox[key];
@@ -579,7 +579,7 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
   }
 
   // Generate compat data from schema files if version_added was not yet annotated.
-  if (!value.annotations.find((a) => a.hasOwn('version_added'))) {
+  if (!value.annotations.find((a) => Object.hasOwn(a, 'version_added'))) {
     value.annotations.push({
       version_added: await extractThunderbirdCompatData(
         config,

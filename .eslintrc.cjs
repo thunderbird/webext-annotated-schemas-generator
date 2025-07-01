@@ -29,6 +29,7 @@ module.exports = {
     'no-dupe-keys': 'error',
     'no-dupe-args': 'error',
     'no-dupe-class-members': 'error',
+    'no-duplicate-imports': 'error',
 
     // Best practices
     eqeqeq: ['error', 'always'],

@@ -1,1 +1,8 @@
 node_modules
+
+# Cache files
+persistent_schema_cache.json
+temporary_schema_cache.json
+
+# Generated output files
+permissions.ftl

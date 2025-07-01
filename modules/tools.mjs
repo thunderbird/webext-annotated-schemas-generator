@@ -179,10 +179,15 @@ export function parseArgs(argv = process.argv.slice(2)) {
  */
 export async function getJsonFiles(folderPath) {
   const files = await fs.readdir(folderPath, { withFileTypes: true });
-  return files.filter(
-    (item) =>
-      !item.isDirectory() && path.extname(item.name).toLowerCase() === '.json'
-  );
+  return files
+    .filter(
+      (item) =>
+        !item.isDirectory() && path.extname(item.name).toLowerCase() === '.json'
+    )
+    .map((item) => ({
+      name: item.name,
+      path: folderPath,
+    }));
 }
 
 /**
