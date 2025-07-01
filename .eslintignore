@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+output/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp 

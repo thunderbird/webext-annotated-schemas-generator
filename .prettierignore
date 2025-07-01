@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Generated files
+output/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md 

@@ -1,18 +1,18 @@
-import bent from "bent";
-import fs from "node:fs/promises";
-import https from "https";
-import jsonUtils from "comment-json";
-import path from "node:path";
+import bent from 'bent';
+import fs from 'node:fs/promises';
+import https from 'https';
+import jsonUtils from 'comment-json';
+import path from 'node:path';
 
-import { createWriteStream } from "node:fs";
+import { createWriteStream } from 'node:fs';
 
-const requestText = bent("GET", "string", 200);
+const requestText = bent('GET', 'string', 200);
 
 // The temporary cache is still written to disc, but can be easily cleared
 // without interfering with the persistent cache.
 const SCHEMA_CACHE = {};
-const PERSISTENT_SCHEMA_CACHE_FILE = "persistent_schema_cache.json";
-const TEMPORARY_SCHEMA_CACHE_FILE = "temporary_schema_cache.json";
+const PERSISTENT_SCHEMA_CACHE_FILE = 'persistent_schema_cache.json';
+const TEMPORARY_SCHEMA_CACHE_FILE = 'temporary_schema_cache.json';
 
 /**
  * Simple helper function to sort nested objects by keys.
@@ -22,7 +22,7 @@ const TEMPORARY_SCHEMA_CACHE_FILE = "temporary_schema_cache.json";
  * @returns The object recursively sorted by keys.
  */
 export function sortKeys(x) {
-  if (typeof x !== "object" || !x) {
+  if (typeof x !== 'object' || !x) {
     return x;
   }
   if (Array.isArray(x)) {
@@ -43,7 +43,7 @@ export async function writePrettyJSONFile(filePath, json) {
   try {
     return await fs.writeFile(filePath, JSON.stringify(json, null, 4));
   } catch (err) {
-    console.error("Error in writePrettyJSONFile()", filePath, err);
+    console.error('Error in writePrettyJSONFile()', filePath, err);
     throw err;
   }
 }
@@ -67,7 +67,7 @@ export function validateUrl(url) {
       resolve(408); // Request Timeout
     });
 
-    request.on("error", (err) => {
+    request.on('error', () => {
       resolve(500);
     });
   });
@@ -88,13 +88,13 @@ export async function downloadUrl(url, filePath) {
     https
       .get(url, (response) => {
         response.pipe(file);
-        file.on("finish", () => {
+        file.on('finish', () => {
           file.close(() => {
             resolve(filePath);
           });
         });
       })
-      .on("error", (err) => {
+      .on('error', (err) => {
         reject(err);
       });
   });
@@ -126,12 +126,12 @@ export async function readUrl(url) {
 export async function readCachedUrl(url, options) {
   const temporary = options?.temporary ?? false;
   const cache = temporary
-    ? { type: "temporary", file: TEMPORARY_SCHEMA_CACHE_FILE }
-    : { type: "persistent", file: PERSISTENT_SCHEMA_CACHE_FILE };
+    ? { type: 'temporary', file: TEMPORARY_SCHEMA_CACHE_FILE }
+    : { type: 'persistent', file: PERSISTENT_SCHEMA_CACHE_FILE };
 
   if (!SCHEMA_CACHE[cache.type]) {
     try {
-      let data = await fs.readFile(cache.file, "utf-8");
+      const data = await fs.readFile(cache.file, 'utf-8');
       SCHEMA_CACHE[cache.type] = new Map(jsonUtils.parse(data));
     } catch (ex) {
       // Cache file does not yet exist.
@@ -140,11 +140,11 @@ export async function readCachedUrl(url, options) {
   }
 
   if (!SCHEMA_CACHE[cache.type].has(url)) {
-    let rev = await readUrl(url);
+    const rev = await readUrl(url);
     SCHEMA_CACHE[cache.type].set(url, rev);
     await writePrettyJSONFile(
       cache.file,
-      Array.from(SCHEMA_CACHE[cache.type].entries()),
+      Array.from(SCHEMA_CACHE[cache.type].entries())
     );
   }
   return SCHEMA_CACHE[cache.type].get(url);
@@ -158,8 +158,8 @@ export async function readCachedUrl(url, options) {
 export function parseArgs(argv = process.argv.slice(2)) {
   const args = {};
   for (const arg of argv) {
-    if (arg.startsWith("--")) {
-      const [key, value] = arg.slice(2).split("=");
+    if (arg.startsWith('--')) {
+      const [key, value] = arg.slice(2).split('=');
       if (!value) {
         args[key] = true;
       } else {
@@ -181,7 +181,7 @@ export async function getJsonFiles(folderPath) {
   const files = await fs.readdir(folderPath, { withFileTypes: true });
   return files.filter(
     (item) =>
-      !item.isDirectory() && path.extname(item.name).toLowerCase() === ".json",
+      !item.isDirectory() && path.extname(item.name).toLowerCase() === '.json'
   );
 }
 
