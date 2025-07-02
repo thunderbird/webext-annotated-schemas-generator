@@ -8,11 +8,16 @@ import yaml from 'yaml';
 import { HG_URL, BUILD_HUB_URL, COMM_GECKO_REV } from './constants.mjs';
 import { downloadUrl, readCachedUrl } from './tools.mjs';
 
+/**
+ * @typedef {import('./types.mjs').Config} Config
+ */
+
 const requestJson = bent('GET', 'json', 200);
 
 /**
  * Download a file from hg.mozilla.org and add it to the local checkout folder.
  *
+ * @param {Config} config - Global configuration object
  * @param {string} repository - The repository, for example comm-central,
  *    comm-beta, comm-esr115, ...
  * @param {string} filePath - The path of the file.

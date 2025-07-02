@@ -4,5 +4,8 @@ node_modules
 persistent_schema_cache.json
 temporary_schema_cache.json
 
+# Build outputs
+output/
+
 # Generated output files
 permissions.ftl

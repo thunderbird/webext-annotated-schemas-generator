@@ -42,6 +42,10 @@ import {
 
 import { processImports, processSchema } from './modules/process.mjs';
 
+/**
+ * @typedef {import('./modules/types.mjs').SchemaFile} SchemaFile
+ */
+
 // The config object is used as a global state, not limited to passed in command
 // line arguments.
 const config = parseArgs();
@@ -487,7 +491,7 @@ async function extractPermissionStrings(sourceFolder) {
  * schemas object.
  *
  * @param {string} owner - The owner of the schema, either "thunderbird" or "firefox".
- * @param {File[]} files
+ * @param {SchemaFile[]} files
  */
 async function readSchemaFiles(owner, files) {
   for (const file of files) {
@@ -504,7 +508,7 @@ async function readSchemaFiles(owner, files) {
  * @param {string[]} owners - Array of owners. Values should be either "thunderbird"
  *    or "firefox". Try to merge each annotation file into the matching schema
  *    file of the primary owner first. If that fails, try the secondary owner.
- * @param {File[]} files - Array of annotation files.
+ * @param {SchemaFile[]} files - Array of annotation files.
  */
 async function readAnnotationFiles(owners, files) {
   for (const file of files) {
