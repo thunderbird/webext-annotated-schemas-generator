@@ -553,6 +553,10 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
  */
 async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
   // Add api_documentation_url if this is the types/events/functions level.
+  if (!value.annotations) {
+    value.annotations = [];
+  }
+
   if (searchPath.length === 3) {
     const [namespaceName, , entryName] = searchPath.map((e) => e.ref);
     const anchorParts = [entryName];
@@ -563,19 +567,10 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
     }
     const anchor = anchorParts.join('-').toLowerCase();
     const api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
-    const status = await validateUrl(api_documentation_url);
-    if (status !== 200) {
-      console.log(' - problematic URL found:', status, api_documentation_url);
-    } else {
-      if (!value.annotations) {
-        value.annotations = [];
-      }
+    const isValidURL = await validateUrl(api_documentation_url);
+    if (isValidURL) {
       value.annotations.push({ api_documentation_url });
     }
-  }
-
-  if (!value.annotations) {
-    value.annotations = [];
   }
 
   // Generate compat data from schema files if version_added was not yet annotated.
