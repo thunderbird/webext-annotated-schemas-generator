@@ -6,6 +6,10 @@ import path from 'node:path';
 
 import { createWriteStream } from 'node:fs';
 
+/**
+ * @typedef {import('./types.mjs').SchemaFile} SchemaFile
+ */
+
 const requestText = bent('GET', 'string', 200);
 
 // The temporary cache is still written to disc, but can be easily cleared
@@ -183,14 +187,19 @@ export function parseArgs(argv = process.argv.slice(2)) {
  *
  * @param {string} folderPath - The path of the folder
  *
- * @returns {File[]}
+ * @returns {SchemaFile[]}
  */
 export async function getJsonFiles(folderPath) {
   const files = await fs.readdir(folderPath, { withFileTypes: true });
-  return files.filter(
-    (item) =>
-      !item.isDirectory() && path.extname(item.name).toLowerCase() === '.json'
-  );
+  return files
+    .filter(
+      (item) =>
+        !item.isDirectory() && path.extname(item.name).toLowerCase() === '.json'
+    )
+    .map((item) => ({
+      name: item.name,
+      path: folderPath,
+    }));
 }
 
 /**

@@ -5,6 +5,11 @@ import { getHgFilePath, getHgRevisionLogPath } from './mozilla.mjs';
 import { validateUrl, readCachedUrl, isOdd } from './tools.mjs';
 import { COMM_VERSION_FILE, API_DOC_BASE_URL } from './constants.mjs';
 
+/**
+ * @typedef {import('./types.mjs').Config} Config
+ * @typedef {import('./types.mjs').SchemaInfo} SchemaInfo
+ */
+
 // For debugging.
 const PROCESS_LOGGER_CONFIG = {
   array: false,
@@ -43,7 +48,7 @@ export function processImports(schema, value = schema) {
     return to;
   };
 
-  if (value.hasOwn('$import')) {
+  if (Object.hasOwn(value, '$import')) {
     // Assume imports are unique, ignore prepended namespace (lazy me).
     const id = value.$import.split('.').pop();
     delete value.$import;
@@ -77,12 +82,12 @@ export function processImports(schema, value = schema) {
  * enums, remove single leftover choices, add compat data.
  *
  * @param {object} params
- * @param {object} params.config - A global config object.
+ * @param {Config} params.config - A global config object.
  * @param {any} params.value - The currently processed value. Usually a schema
  *    entry.
  * @param {array} params.fullPath - The full hierarchical path of the given value
  *    in the schema.
- * @param {object} params.schemaInfo - Information about the currently processed
+ * @param {SchemaInfo} params.schemaInfo - Information about the currently processed
  *    schema (owner, file, schema, version_added).
  * @param {string} params.searchPath - The full hierarchical path of an element
  *    to search for in the schema.
@@ -467,8 +472,8 @@ function getNestedIdOrNamespace(value, searchString) {
 /**
  * Add Firefox compatibility data from BCD.
  *
- * @param {ConfigData} config - Global config data.
- * @param {object} schemaInfo - Information about the currently processed schema
+ * @param {Config} config - Global config data.
+ * @param {SchemaInfo} schemaInfo - Information about the currently processed schema
  *    (owner, file, schema, version_added).
  * @param {any} value - The currently processed value. Usually a schema entry.
  * @param {array} searchPath - The path of the currently processed value, which
@@ -507,7 +512,7 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
           case 'version_added':
           case 'version_removed': {
             // Do not override explicitly specified values from annotation files.
-            if (!value.annotations.some((a) => a.hasOwn(key))) {
+            if (!value.annotations.some((a) => Object.hasOwn(a, key))) {
               // If Thunderbird globally specifies a higher version (in the root
               // of the schema) then Firefox/BCD, use that instead.
               const firefox_version = compatData.support.firefox[key];
@@ -544,8 +549,8 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
 /**
  * Add generated Thunderbird compatibility data.
  *
- * @param {ConfigData} config - Global config data.
- * @param {object} schemaInfo - Information about the currently processed schema
+ * @param {Config} config - Global config data.
+ * @param {SchemaInfo} schemaInfo - Information about the currently processed schema
  *    (owner, file, schema, version_added).
  * @param {any} value - The currently processed value. Usually a schema entry.
  * @param {array} searchPath - The path of the currently processed value, which
@@ -574,7 +579,7 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
   }
 
   // Generate compat data from schema files if version_added was not yet annotated.
-  if (!value.annotations.find((a) => a.hasOwn('version_added'))) {
+  if (!value.annotations.find((a) => Object.hasOwn(a, 'version_added'))) {
     value.annotations.push({
       version_added: await extractThunderbirdCompatData(
         config,
@@ -589,7 +594,7 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
  * Calculate the documentation slug/path for the requested manifest version and
  * Thunderbird version.
  *
- * @param {ConfigData} config - Global config data.
+ * @param {Config} config - Global config data.
  */
 function getApiDocSlug(config) {
   if (config.docRelease === 'beta') {
@@ -610,7 +615,7 @@ function getApiDocSlug(config) {
 /**
  * Analyze a historical schema file and check if a specific API element exists.
  *
- * @param {ConfigData} config - Global config data.
+ * @param {Config} config - Global config data.
  * @param {string} fileName - Name of the Thunderbird schema file.
  * @param {array} searchPath - Path of the searched API element.
  * @param {string} revision - Historical revision (mercurial changeset identifier).
@@ -646,7 +651,7 @@ async function testRevision(config, fileName, searchPath, revision) {
  * Request revision log for the specified file and find the first revision which
  * supports the specific API element.
  *
- * @param {ConfigData} config - Global config data.
+ * @param {Config} config - Global config data.
  * @param {string} fileName - Name of the Thunderbird schema file.
  * @param {array} searchPath - Path of the searched API element.
  *
