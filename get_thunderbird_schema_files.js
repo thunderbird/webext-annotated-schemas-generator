@@ -124,8 +124,8 @@ async function main() {
     )
   );
 
-  for (const [domainName, url] of Object.entries(config.urlReplacements)) {
-    await validateUrl(url, domainName);
+  for (const [placeholder, url] of Object.entries(config.urlReplacements)) {
+    await validateUrl(url, placeholder);
   }
 
   console.log(` Parsing schema files ...`);

@@ -56,8 +56,8 @@ export async function writePrettyJSONFile(filePath, json) {
  *
  * @returns {boolean} true if the URL returns a successful response, false otherwise
  */
-export async function validateUrl(url, domainName = '') {
-  const domainPart = domainName ? `${domainName} ` : '';
+export async function validateUrl(url, placeholder = '') {
+  const placeholderText = placeholder ? `${placeholder} ` : '';
 
   try {
     const response = await fetch(url, {
@@ -69,12 +69,14 @@ export async function validateUrl(url, domainName = '') {
       return true;
     } else {
       console.log(
-        ` - problematic URL found: ${response.status} ${domainPart}${url}`
+        ` - problematic URL found: ${response.status} ${placeholderText}${url}`
       );
       return false;
     }
   } catch (error) {
-    console.log(` - problematic URL found: network error ${domainPart}${url}`);
+    console.log(
+      ` - problematic URL found: network error ${placeholderText}${url}`
+    );
     return false;
   }
 }
