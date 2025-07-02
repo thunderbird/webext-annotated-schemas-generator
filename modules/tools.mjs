@@ -69,13 +69,13 @@ export async function validateUrl(url, placeholder = '') {
       return true;
     } else {
       console.log(
-        ` - problematic URL found: ${response.status} ${placeholderText}${url}`
+        ` - problematic URL found: ${response.status} - ${placeholderText} - ${url}`
       );
       return false;
     }
   } catch (error) {
     console.log(
-      ` - problematic URL found: network error ${placeholderText}${url}`
+      ` - problematic URL found: network error - ${placeholderText} - ${url}`
     );
     return false;
   }
