@@ -61,8 +61,6 @@ export async function writePrettyJSONFile(filePath, json) {
  * @returns {boolean} true if the URL returns a successful response, false otherwise
  */
 export async function validateUrl(url, placeholder = '') {
-  const placeholderText = placeholder ? `${placeholder} ` : '';
-
   try {
     const response = await fetch(url, {
       method: 'GET',
@@ -72,8 +70,9 @@ export async function validateUrl(url, placeholder = '') {
     if (response.ok) {
       return true;
     } else {
+      const logEntries = [response.status, placeholder, url];
       console.log(
-        ` - problematic URL found: ${response.status} - ${placeholderText} - ${url}`
+        ` - problematic URL found: ${logEntries.filter(Boolean).join(" - ")}`
       );
       return false;
     }
