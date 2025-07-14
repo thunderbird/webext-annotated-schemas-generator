@@ -24,6 +24,7 @@
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "lint": "eslint . --ext .js,.mjs",
     "lint:fix": "eslint . --ext .js,.mjs --fix",
+    "lint:format": "npm run lint:fix && npm run format",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"

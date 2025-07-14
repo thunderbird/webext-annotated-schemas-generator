@@ -5,12 +5,11 @@ import path from 'node:path';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 
-// Defining outside the readURL function for mocking purposes
-const requestText = bent('GET', 'string', 200);
-
 /**
  * @typedef {import('./types.mjs').SchemaFile} SchemaFile
  */
+
+const requestText = bent('GET', 'string', 200);
 
 // The temporary cache is still written to disc, but can be easily cleared
 // without interfering with the persistent cache.
