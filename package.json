@@ -19,8 +19,12 @@
   ],
   "scripts": {
     "start": "node get_thunderbird_schema_files.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "lint": "eslint . --ext .js,.mjs",
     "lint:fix": "eslint . --ext .js,.mjs --fix",
+    "lint:format": "npm run lint:fix && npm run format",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"
@@ -39,6 +43,7 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-node": "^11.1.0",
     "husky": "^9.0.11",
+    "jest": "^30.0.4",
     "lint-staged": "^15.2.2",
     "prettier": "^3.2.5"
   },
