@@ -57,5 +57,11 @@ module.exports = {
         sourceType: 'module',
       },
     },
+    {
+      files: ['**/*.test.mjs', '**/*.spec.mjs'],
+      rules: {
+        'node/no-extraneous-import': 'off', // Allow @jest/globals import in test files. Its necessary for mjs files.
+      },
+    },
   ],
 };
