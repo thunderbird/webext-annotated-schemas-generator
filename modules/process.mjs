@@ -402,6 +402,7 @@ export async function processSchema({
 
           // Replace single back ticks.
           v = v.replace(/`(.+?)`/g, '<val>$1</val>');
+          accumulator[key] = v;
         }
         break;
       default:
@@ -520,9 +521,9 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
               value.annotations.push({
                 [key]:
                   !isNaN(parseInt(thunderbird_version, 10)) &&
-                  (firefox_version === true ||
-                    isNaN(parseInt(firefox_version, 10)) ||
-                    parseInt(thunderbird_version, 10) >
+                    (firefox_version === true ||
+                      isNaN(parseInt(firefox_version, 10)) ||
+                      parseInt(thunderbird_version, 10) >
                       parseInt(firefox_version, 10))
                     ? thunderbird_version
                     : firefox_version,
