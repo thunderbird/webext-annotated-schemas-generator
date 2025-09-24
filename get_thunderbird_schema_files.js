@@ -57,6 +57,7 @@ if (
 ) {
   console.log(HELP_SCREEN);
 } else {
+  console.log("Running get_thunderbird_schema_files.js v2025.09.24");
   main();
 }
 
