@@ -98,7 +98,7 @@ export async function validateUrl(url, placeholder = '') {
     }
   } catch (error) {
     console.log(
-      ` - problematic URL found: network error - ${placeholderText} - ${url}`
+      ` - problematic URL found: network error - ${placeholder || "?"} - ${url}`
     );
     return false;
   }
