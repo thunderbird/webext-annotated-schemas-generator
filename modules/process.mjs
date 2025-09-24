@@ -561,10 +561,8 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
     }
     const anchor = anchorParts.join('-').toLowerCase();
     const api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
-    const isValidURL = await validateUrl(api_documentation_url);
-    if (isValidURL) {
-      value.annotations.push({ api_documentation_url });
-    }
+    value.annotations.push({ api_documentation_url });
+    await validateUrl(api_documentation_url);
   }
 
   // Generate compat data from schema files if version_added was not yet annotated.
