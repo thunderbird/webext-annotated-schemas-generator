@@ -381,14 +381,13 @@ export async function processSchema({
         if (typeof v === 'string') {
           // Newer schema files use the Firefox notation directly, but older
           // ones may still use the deprecated reStructuredText notations.
-          // Fix any remaining deprecated notation.
-          v = v.replace(/``(.+?)``/g, '<val>$1</val>');
           v = v.replace(/:doc:`(.*?)`/g, '$(doc:$1)');
           v = v.replace(/:ref:`(.*?)`/g, '$(ref:$1)');
           v = v.replace(/:permission:`(.*?)`/g, '<permission>$1</permission>');
 
-          // Replace URLs and single back ticks.
+          // Replace URLs and single or double back ticks.
           v = replaceUrlsInDescription(v, config.urlReplacements)
+            .replace(/``(.+?)``/g, '<val>$1</val>')
             .replace(/`(.+?)`/g, '<val>$1</val>');
 
           accumulator[key] = v;

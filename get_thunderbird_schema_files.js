@@ -619,15 +619,17 @@ async function expandAnnotations(config, aEntry, annotation, basePath) {
       for (const aObj of annotation[aEntry]) {
         for (let type of ["text", "hint", "note", "warning"]) {
           if (!aObj[type]) continue
-          // Replace URLs and single back ticks.
+          // Replace URLs and single or double back ticks.
           aObj[type] = replaceUrlsInDescription(aObj[type], config.urlReplacements)
+            .replace(/``(.+?)``/g, '<val>$1</val>')
             .replace(/`(.+?)`/g, '<val>$1</val>');
         }
 
         if (aObj.list) {
           for (let i = 0; i < aObj.list.length; i++) {
-            // Replace URLs and single back ticks.
+            // Replace URLs and single or double back ticks.
             aObj.list[i] = replaceUrlsInDescription(aObj.list[i], config.urlReplacements)
+              .replace(/``(.+?)``/g, '<val>$1</val>')
               .replace(/`(.+?)`/g, '<val>$1</val>');
           }
         }
