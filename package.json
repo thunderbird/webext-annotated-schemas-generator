@@ -21,6 +21,7 @@
     "start": "node get_thunderbird_schema_files.js",
     "lint": "eslint . --ext .js,.mjs",
     "lint:fix": "eslint . --ext .js,.mjs --fix",
+    "lint:format": "npm run lint:fix && npm run format",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"
