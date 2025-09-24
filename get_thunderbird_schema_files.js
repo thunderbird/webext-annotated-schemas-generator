@@ -18,6 +18,7 @@ import {
   downloadUrl,
   getJsonFiles,
   parseArgs,
+  replaceUrlsInDescription,
   sortKeys,
   validateUrl,
   writePrettyJSONFile,
@@ -170,6 +171,7 @@ async function main() {
   // Add information from annotation files.
   await readAnnotationFiles(
     ['thunderbird', 'firefox'],
+    config,
     await getJsonFiles(
       path.join(
         config.source,
@@ -505,9 +507,10 @@ async function readSchemaFiles(owner, files) {
  * @param {string[]} owners - Array of owners. Values should be either "thunderbird"
  *    or "firefox". Try to merge each annotation file into the matching schema
  *    file of the primary owner first. If that fails, try the secondary owner.
+ * @param {object} config - Config object.
  * @param {SchemaFile[]} files - Array of annotation files.
  */
-async function readAnnotationFiles(owners, files) {
+async function readAnnotationFiles(owners, config, files) {
   for (const file of files) {
     for (const owner of owners) {
       const schemaInfo = config.schemaInfos.find(
@@ -517,7 +520,7 @@ async function readAnnotationFiles(owners, files) {
         const json = jsonUtils.parse(
           await fs.readFile(path.join(file.path, file.name), 'utf-8')
         );
-        await mergeAnnotations(schemaInfo.schema, json, file.path);
+        await mergeAnnotations(config, schemaInfo.schema, json, file.path);
         break;
       }
     }
@@ -528,12 +531,13 @@ async function readAnnotationFiles(owners, files) {
  * Merge annotation elements from the provided annotation JSON into the specified
  * schema JSON.
  *
+ * @param {object} config - Config object.
  * @param {any} schema - An element from a schema JSON.
  * @param {any} annotation  - An element from an annotation JSON.
  * @param {string} basePath - The pase path of the currently processed annotation
  *    schema, needed to resolve the path of to-be-included files.
  */
-async function mergeAnnotations(schema, annotation, basePath) {
+async function mergeAnnotations(config, schema, annotation, basePath) {
   if (
     typeof schema !== typeof annotation ||
     Array.isArray(schema) !== Array.isArray(annotation)
@@ -566,7 +570,7 @@ async function mergeAnnotations(schema, annotation, basePath) {
         );
       if (sEntries.length) {
         for (const sEntry of sEntries) {
-          await mergeAnnotations(sEntry, aEntry, basePath);
+          await mergeAnnotations(config, sEntry, aEntry, basePath);
         }
       } else {
         throw new Error(`Unmatched entry: ${JSON.stringify(aEntry, null, 2)}`);
@@ -575,7 +579,7 @@ async function mergeAnnotations(schema, annotation, basePath) {
   } else if (typeof annotation === 'object') {
     for (const aEntry of Object.keys(annotation)) {
       if (!schema[aEntry]) {
-        await expandAnnotations(aEntry, annotation, basePath);
+        await expandAnnotations(config, aEntry, annotation, basePath);
         schema[aEntry] = annotation[aEntry];
       } else {
         if (aEntry === 'choices') {
@@ -585,13 +589,14 @@ async function mergeAnnotations(schema, annotation, basePath) {
           }
           for (let i = 0; i < annotation[aEntry].length; i++) {
             await mergeAnnotations(
+              config,
               schema[aEntry][i],
               annotation[aEntry][i],
               basePath
             );
           }
         } else {
-          await mergeAnnotations(schema[aEntry], annotation[aEntry], basePath);
+          await mergeAnnotations(config, schema[aEntry], annotation[aEntry], basePath);
         }
       }
     }
@@ -601,39 +606,55 @@ async function mergeAnnotations(schema, annotation, basePath) {
 /**
  * Expand to-be-included elements and add them directly to the schema.
  *
+ * @param {object} config - Config object.
  * @param {string} aEntry - The name of the currently processed JSON property.
  * @param {any} annotation - The currently processed JSON object, which includes
  *   aEntry.
  * @param {string} basePath - The pase path of the currently processed annotation
  *    schema, needed to resolve the path of to-be-included files.
  */
-async function expandAnnotations(aEntry, annotation, basePath) {
+async function expandAnnotations(config, aEntry, annotation, basePath) {
   switch (aEntry) {
     case 'annotations':
       for (const aObj of annotation[aEntry]) {
-        if (!aObj.code || Array.isArray(aObj.code)) {
-          continue;
+        for (let type of ["text", "hint", "note", "warning"]) {
+          if (!aObj[type]) continue
+          // Replace URLs and single back ticks.
+          aObj[type] = replaceUrlsInDescription(aObj[type], config.urlReplacements)
+            .replace(/`(.+?)`/g, '<val>$1</val>');
         }
 
-        if (!aObj.type) {
-          if (aObj.code.endsWith('.js') || aObj.code.endsWith('.mjs')) {
-            aObj.type = 'JavaScript';
-          }
-          if (aObj.code.endsWith('.css')) {
-            aObj.type = 'CSS';
-          }
-          if (aObj.code.endsWith('.json')) {
-            aObj.type = 'JSON';
+        if (aObj.list) {
+          for (let i = 0; i < aObj.list.length; i++) {
+            // Replace URLs and single back ticks.
+            aObj.list[i] = replaceUrlsInDescription(aObj.list[i], config.urlReplacements)
+              .replace(/`(.+?)`/g, '<val>$1</val>');
           }
         }
-        const code = await fs.readFile(path.join(basePath, aObj.code), 'utf-8');
-        aObj.code = code.replaceAll('\r', '').split('\n');
+
+        if (aObj.code) {
+          if (Array.isArray(aObj.code)) continue;
+          if (!aObj.type) {
+            if (aObj.code.endsWith('.js') || aObj.code.endsWith('.mjs')) {
+              aObj.type = 'JavaScript';
+            }
+            if (aObj.code.endsWith('.css')) {
+              aObj.type = 'CSS';
+            }
+            if (aObj.code.endsWith('.json')) {
+              aObj.type = 'JSON';
+            }
+          }
+          const code = await fs.readFile(path.join(basePath, aObj.code), 'utf-8');
+          aObj.code = code.replaceAll('\r', '').split('\n');
+        }
       }
       break;
     case 'enums':
       for (const enumName of Object.keys(annotation[aEntry])) {
         if (annotation[aEntry][enumName]['annotations']) {
           await expandAnnotations(
+            config,
             'annotations',
             annotation[aEntry][enumName],
             basePath

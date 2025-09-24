@@ -19,6 +19,26 @@ const PERSISTENT_SCHEMA_CACHE_FILE = 'persistent_schema_cache.json';
 const TEMPORARY_SCHEMA_CACHE_FILE = 'temporary_schema_cache.json';
 
 /**
+ * 
+ * @param {string} description 
+ * @param {object} urlReplacements
+ * @returns {string} Updated descriptions where URLs have been replaced.
+ */
+export function replaceUrlsInDescription(description, urlReplacements) {
+  return description.replace(
+    /\$\(\s*url\s*:\s*([^)]+?)\s*\)\[(.+?)\]/g,
+    (match, placeholder, label) => {
+      const url = urlReplacements[placeholder.trim()];
+      if (!url) {
+        console.log(`Unknown url placeholder: ${placeholder}`);
+        return match; // If no URL found, leave it as-is
+      }
+      return `<a href='${url}'>${label}</a>`;
+    }
+  );
+}
+
+/**
  * Simple helper function to sort nested objects by keys.
  *
  * @param {any} x - To be sorted element. Skipped if it isn't an object.

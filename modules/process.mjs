@@ -2,7 +2,7 @@ import bcd from '@mdn/browser-compat-data' with { type: 'json' };
 import jsonUtils from 'comment-json';
 
 import { getHgFilePath, getHgRevisionLogPath } from './mozilla.mjs';
-import { validateUrl, readCachedUrl, isOdd } from './tools.mjs';
+import { validateUrl, readCachedUrl, replaceUrlsInDescription, isOdd } from './tools.mjs';
 import { COMM_VERSION_FILE, API_DOC_BASE_URL } from './constants.mjs';
 
 /**
@@ -387,21 +387,10 @@ export async function processSchema({
           v = v.replace(/:ref:`(.*?)`/g, '$(ref:$1)');
           v = v.replace(/:permission:`(.*?)`/g, '<permission>$1</permission>');
 
-          // Replace URLs.
-          v = v.replace(
-            /\$\(\s*url\s*:\s*([^)]+?)\s*\)\[(.+?)\]/g,
-            (match, placeholder, label) => {
-              const url = config.urlReplacements[placeholder.trim()];
-              if (!url) {
-                console.log(`Unknown url placeholder: ${placeholder}`);
-                return match; // If no URL found, leave it as-is
-              }
-              return `<a href='${url}'>${label}</a>`;
-            }
-          );
+          // Replace URLs and single back ticks.
+          v = replaceUrlsInDescription(v, config.urlReplacements)
+            .replace(/`(.+?)`/g, '<val>$1</val>');
 
-          // Replace single back ticks.
-          v = v.replace(/`(.+?)`/g, '<val>$1</val>');
           accumulator[key] = v;
         }
         break;
