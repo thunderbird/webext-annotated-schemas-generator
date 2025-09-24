@@ -1,10 +1,9 @@
 import bent from 'bent';
 import fs from 'node:fs/promises';
-import https from 'https';
 import jsonUtils from 'comment-json';
 import path from 'node:path';
-
 import { createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 
 /**
  * @typedef {import('./types.mjs').SchemaFile} SchemaFile
@@ -92,13 +91,13 @@ export async function validateUrl(url, placeholder = '') {
     } else {
       const logEntries = [response.status, placeholder, url];
       console.log(
-        ` - problematic URL found: ${logEntries.filter(Boolean).join(" - ")}`
+        ` - problematic URL found: ${logEntries.filter(Boolean).join(' - ')}`
       );
       return false;
     }
   } catch (error) {
     console.log(
-      ` - problematic URL found: network error - ${placeholderText} - ${url}`
+      ` - problematic URL found: network error - ${placeholder} - ${url}`
     );
     return false;
   }
@@ -113,22 +112,15 @@ export async function validateUrl(url, placeholder = '') {
  */
 export async function downloadUrl(url, filePath) {
   console.log(` - downloading ${url} ...`);
-  await new Promise((resolve) => setTimeout(resolve, 2500));
-  return new Promise((resolve, reject) => {
-    const file = createWriteStream(filePath);
-    https
-      .get(url, (response) => {
-        response.pipe(file);
-        file.on('finish', () => {
-          file.close(() => {
-            resolve(filePath);
-          });
-        });
-      })
-      .on('error', (err) => {
-        reject(err);
-      });
-  });
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch: ${response.statusText}`);
+  }
+  const fileStream = createWriteStream(filePath);
+  await pipeline(response.body, fileStream);
+
+  return filePath;
 }
 
 /**
@@ -139,7 +131,6 @@ export async function downloadUrl(url, filePath) {
  */
 export async function readUrl(url) {
   console.log(` - downloading ${url}`);
-  await new Promise((resolve) => setTimeout(resolve, 2500));
   return requestText(url);
 }
 
