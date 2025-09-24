@@ -389,9 +389,8 @@ export async function processSchema({
           v = replaceUrlsInDescription(v, config.urlReplacements)
             .replace(/``(.+?)``/g, '<val>$1</val>')
             .replace(/`(.+?)`/g, '<val>$1</val>');
-
-          accumulator[key] = v;
         }
+        accumulator[key] = v;
         break;
       default:
         accumulator[key] = v;
