@@ -178,7 +178,7 @@ export async function processSchema({
     const filtered = value.filter(isInVersionRange);
     for (let i = 0; i < filtered.length; i++) {
       // The default is to identify nested elements via their index.
-      let newPathElement = { ref: i, type: 'idx' };
+      let newPathElement = { ref: i, type: 'idx', info: filtered[i] };
       switch (pathElements.at(-1)?.ref) {
         case 'choices':
         case 'parameters':
@@ -279,7 +279,7 @@ export async function processSchema({
       pathElements.at(-1)?.ref
     )
   ) {
-    pathElements.push({ ref: '0', type: 'idx' });
+    pathElements.push({ ref: '0', type: 'idx', info: {} });
   }
 
   // When searching for enums, the compat data generator uses the annotated enums
@@ -469,18 +469,30 @@ function getNestedIdOrNamespace(value, searchString) {
  *    Thunderbird schema files.
  */
 async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
-  const [namespaceName, , entryName, , paramName] = searchPath.map(
-    (e) => e.ref
-  );
-
   let entry =
-    bcd.webextensions.api[namespaceName] &&
-    bcd.webextensions.api[namespaceName][entryName];
-  if (entry && paramName) {
-    entry = entry[paramName];
-  }
+    bcd.webextensions.api[searchPath[0].ref] &&
+    bcd.webextensions.api[searchPath[0].ref][searchPath[2].ref];
   if (!entry) {
     return;
+  }
+
+  // Dive and follow the searchPath.
+  let testDepth = 4
+  while (searchPath.length > testDepth) {
+    // The searchPath may by of type idx (ref is an idx) or of type property/name
+    // (ref is a name). For the idx case, more info is avail in the info object.
+    let prevEntry = entry;
+    if (searchPath[testDepth].type == "idx" && searchPath[testDepth].info?.name) {
+      entry = entry[searchPath[testDepth].info.name];
+    } else {
+      entry = entry[searchPath[testDepth].ref];
+    }
+    if (!entry) {
+      // Helpful logging to understand what is going on here.
+      // console.log({ searchPath, prevEntry });
+      return;
+    }
+    testDepth += 2;
   }
 
   const compatData = entry.__compat;
@@ -550,6 +562,7 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
     value.annotations = [];
   }
 
+  // Add api_documentation_url for main entries (functions, events, ...)
   if (searchPath.length === 3) {
     const [namespaceName, , entryName] = searchPath.map((e) => e.ref);
     const anchorParts = [entryName];
