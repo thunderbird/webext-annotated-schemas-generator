@@ -535,7 +535,9 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
               ? compatData.support.firefox.notes
               : [compatData.support.firefox.notes];
             notes.forEach((note) => {
-              value.annotations.push({ note, bcd: true });
+              // Also rebrand Firefox notes on-the-fly, they use "version XY" and
+              // "Firefox XY". The first one is a better fit.
+              value.annotations.push({ note: note.replaceAll("Firefox", "version"), bcd: true });
             });
           }
         }
