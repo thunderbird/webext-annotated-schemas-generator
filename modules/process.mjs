@@ -390,7 +390,7 @@ export async function processSchema({
             .replace(/``(.+?)``/g, '<val>$1</val>')
             .replace(/`(.+?)`/g, '<val>$1</val>');
         }
-        accumulator[key] = v;
+        accumulator[key] = v.replaceAll("Firefox", "Thunderbird");
         break;
       default:
         accumulator[key] = v;
@@ -535,9 +535,8 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
               ? compatData.support.firefox.notes
               : [compatData.support.firefox.notes];
             notes.forEach((note) => {
-              // Also rebrand Firefox notes on-the-fly, they use "version XY" and
-              // "Firefox XY". The first one is a better fit.
-              value.annotations.push({ note: note.replaceAll("Firefox", "version"), bcd: true });
+              // Also rebrand Firefox notes on-the-fly to Thunderbird.
+              value.annotations.push({ note: note.replaceAll("Firefox", "Thunderbird"), bcd: true });
             });
           }
         }
