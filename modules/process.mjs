@@ -385,12 +385,13 @@ export async function processSchema({
           v = v.replace(/:ref:`(.*?)`/g, '$(ref:$1)');
           v = v.replace(/:permission:`(.*?)`/g, '<permission>$1</permission>');
 
-          // Replace URLs and single or double back ticks.
+          // Replace URLs and single or double back ticks and rebrand.
           v = replaceUrlsInDescription(v, config.urlReplacements)
             .replace(/``(.+?)``/g, '<val>$1</val>')
-            .replace(/`(.+?)`/g, '<val>$1</val>');
+            .replace(/`(.+?)`/g, '<val>$1</val>')
+            .replaceAll("Firefox", "Thunderbird");
         }
-        accumulator[key] = v.replaceAll("Firefox", "Thunderbird");
+        accumulator[key] = v;
         break;
       default:
         accumulator[key] = v;
