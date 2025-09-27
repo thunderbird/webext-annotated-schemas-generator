@@ -470,8 +470,6 @@ function getNestedIdOrNamespace(value, searchString) {
  *    Thunderbird schema files.
  */
 async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
-  let entry =
-    bcd.webextensions.api[searchPath[0].ref] &&
   // Allow to access nested object by specifying a path, for example:
   // entry = getNested(bcd.webextensions.api, "privacy.network")
   const getNested = (obj, path) => {
