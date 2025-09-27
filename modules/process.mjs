@@ -298,7 +298,7 @@ export async function processSchema({
     // a historical schema, where compat data calculation is not needed.
     !searchPath &&
     // Skip namespace at the top level.
-    pathElements.length > 1 &&
+    pathElements.length > 0 &&
     // Process only actual API elements, skip groups.
     isOdd(pathElements.length) &&
     ![
@@ -328,7 +328,7 @@ export async function processSchema({
       pathElements.at(3).ref === 'choices'
     )
   ) {
-    if (
+    if (pathElements.length == 1 ||
       [
         'types',
         'functions',
@@ -472,13 +472,19 @@ function getNestedIdOrNamespace(value, searchString) {
 async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
   let entry =
     bcd.webextensions.api[searchPath[0].ref] &&
-    bcd.webextensions.api[searchPath[0].ref][searchPath[2].ref];
+  // Allow to access nested object by specifying a path, for example:
+  // entry = getNested(bcd.webextensions.api, "privacy.network")
+  const getNested = (obj, path) => {
+    return path.split('.').reduce((acc, key) => acc?.[key], obj);
+  }
+
+  let entry = getNested(bcd.webextensions.api, searchPath[0].ref);
   if (!entry) {
     return;
   }
 
   // Dive and follow the searchPath.
-  let testDepth = 4
+  let testDepth = 2
   while (searchPath.length > testDepth) {
     // The searchPath may by of type idx (ref is an idx) or of type property/name
     // (ref is a name). For the idx case, more info is avail in the info object.
