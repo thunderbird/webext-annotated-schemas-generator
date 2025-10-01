@@ -606,13 +606,10 @@ function getApiDocSlug(config) {
     return `${API_DOC_BASE_URL}/beta-mv${config.manifest_version}`;
   }
   if (config.docRelease === 'release') {
-    return `${API_DOC_BASE_URL}/release-mv${config.manifest_version}`;
+    return `${API_DOC_BASE_URL}/mv${config.manifest_version}`;
   }
   if (config.docRelease === 'esr') {
     return `${API_DOC_BASE_URL}/esr-mv${config.manifest_version}`;
-  }
-  if (config.docRelease.startsWith('esr')) {
-    return `${API_DOC_BASE_URL}/${config.docRelease.substring(3)}-esr-mv${config.manifest_version}`;
   }
   return `${API_DOC_BASE_URL}/latest`;
 }
