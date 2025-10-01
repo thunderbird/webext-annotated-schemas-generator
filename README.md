@@ -1,4 +1,4 @@
-# 🏗️ webext-schemas-generator
+# 🏗️ webext-annotated-schemas-generator
 
 A script to process Mozilla WebExtension API schema files. It retrieves them either from [`hg.mozilla.org`](https://hg.mozilla.org) or from a local checkout of the Mozilla Mercurial repository. The script filters out schemas for APIs not supported by Thunderbird and adds annotations useful for downstream consumers:
 
@@ -34,7 +34,7 @@ It processes the schema files as follows:
 - Add the `api_documentation_url` property to the annotations.
 - Add the `version_added` property (Thunderbird compatibility data) to the annotations by comparing historical schema revisions to determine when each API element was first introduced.
 
-For convenience, the Thunderbird team provides the processed output in the [webext-schemas](https://github.com/thunderbird/webext-schemas) repository.
+For convenience, the Thunderbird team provides the processed output in the [webext-schemas](https://github.com/thunderbird/webext-annotated-schemas) repository.
 
 
 ## 📦 Installation
