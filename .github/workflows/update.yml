@@ -1,0 +1,120 @@
+name: Sub-Workflow to update a single schema version
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        required: true
+        type: string
+        default: esr
+      manifestVersion:
+        required: true
+        type: string
+        default: 3
+    secrets:
+      SCHEMA_REPO_DEPLOY_KEY: 
+        required: true
+
+jobs:
+  update-schema:
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: ${{ inputs.release }}-mv${{ inputs.manifestVersion }}
+
+    steps:
+      - name: Checkout generator default branch
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SCHEMA_REPO_DEPLOY_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Clone webext-annotated-schemas repo
+        run: |
+          # Remove existing docs folder if it exists
+          rm -rf output
+
+          # Clone the desired branch into output/
+          git clone --branch ${{ env.BRANCH }} git@github.com:thunderbird/webext-annotated-schemas.git output
+
+      - name: Restore cached persistent_schema_cache.json (if available)
+        id: cache-restore
+        uses: actions/cache@v3
+        with:
+          path: persistent_schema_cache.json
+          key: schema-cache
+          restore-keys: |
+            schema-cache
+
+      - name: Check if persistent_schema_cache.json exists
+        id: check_data
+        run: |
+          if [ -f "persistent_schema_cache.json" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download fallback from latest release if cache is not found
+        if: steps.check_data.outputs.found == 'false'
+        run: |
+          echo "No cached version found. Looking for persistent_schema_cache.json in a GitHub release..."
+          releases=$(curl -s https://api.github.com/repos/thunderbird/webext-annotated-schemas-generator/releases)
+
+          for url in $(echo "$releases" | jq -r '.[].assets[]? | select(.name == "persistent_schema_cache.json") | .browser_download_url'); do
+            echo "Found persistent_schema_cache.json at: $url"
+            curl -L -o persistent_schema_cache.json "$url"
+            echo "Download successful."
+            exit 0
+          done
+
+          echo "No persistent_schema_cache.json found in any release."
+          exit 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          npm install
+
+      - name: Run generator script for --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }}
+        id: generate
+        run: |
+          node get_thunderbird_schema_files.js --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }} --output=./output/schema-files/
+
+      - name: Delete Previous Cache
+        if: ${{ steps.cache-restore.outputs.cache-hit == 'true' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh extension install actions/gh-actions-cache
+          gh actions-cache delete "schema-cache" --confirm
+          
+      - name: Update cache with new data.json
+        uses: actions/cache@v3
+        with:
+          path: persistent_schema_cache.json
+          key: schema-cache
+
+      - name: Commit and push changes
+        working-directory: output
+        id: git-check
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add schema-files
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Update schema files (${{ env.BRANCH }}, ${{ steps.generate.outputs.tag_name }})"
+            git push origin HEAD:${{ env.BRANCH }}
+            git tag -f ${{ steps.generate.outputs.tag_name }}-mv${{ inputs.manifestVersion }}
+            git push origin -f ${{ steps.generate.outputs.tag_name }}-mv${{ inputs.manifestVersion }}
+          fi
