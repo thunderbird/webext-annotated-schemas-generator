@@ -328,7 +328,7 @@ export async function processSchema({
       pathElements.at(3).ref === 'choices'
     )
   ) {
-    if (pathElements.length == 1 ||
+    if (pathElements.length === 1 ||
       [
         'types',
         'functions',
@@ -386,7 +386,7 @@ export async function processSchema({
           v = v.replace(/:permission:`(.*?)`/g, '<permission>$1</permission>');
 
           // Replace URLs and single or double back ticks and rebrand.
-          v = replaceUrlsInDescription(v, config.urlReplacements)
+          v = replaceUrlsInDescription(v, config.urlReplacements, revision)
             .replace(/``(.+?)``/g, '<val>$1</val>')
             .replace(/`(.+?)`/g, '<val>$1</val>')
             .replaceAll("Firefox", "Thunderbird");
@@ -486,8 +486,8 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
   while (searchPath.length > testDepth) {
     // The searchPath may by of type idx (ref is an idx) or of type property/name
     // (ref is a name). For the idx case, more info is avail in the info object.
-    let prevEntry = entry;
-    if (searchPath[testDepth].type == "idx" && searchPath[testDepth].info?.name) {
+    // let prevEntry = entry;
+    if (searchPath[testDepth].type === "idx" && searchPath[testDepth].info?.name) {
       entry = entry[searchPath[testDepth].info.name];
     } else {
       entry = entry[searchPath[testDepth].ref];
@@ -579,8 +579,10 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
     }
     const anchor = anchorParts.join('-').toLowerCase();
     const api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
-    value.annotations.push({ api_documentation_url });
-    await validateUrl(api_documentation_url);
+    const isValidURL = await validateUrl(api_documentation_url, `missing documentation required for compat data: ${JSON.stringify(searchPath)}`);
+    if (isValidURL) {
+      value.annotations.push({ api_documentation_url });
+    }
   }
 
   // Generate compat data from schema files if version_added was not yet annotated.
@@ -605,13 +607,10 @@ function getApiDocSlug(config) {
   if (config.docRelease === 'beta') {
     return `${API_DOC_BASE_URL}/beta-mv${config.manifest_version}`;
   }
-  if (config.docRelease === 'release') {
-    return `${API_DOC_BASE_URL}/mv${config.manifest_version}`;
-  }
   if (config.docRelease === 'esr') {
     return `${API_DOC_BASE_URL}/esr-mv${config.manifest_version}`;
   }
-  return `${API_DOC_BASE_URL}/latest`;
+  return `${API_DOC_BASE_URL}/mv${config.manifest_version}`;
 }
 
 /**

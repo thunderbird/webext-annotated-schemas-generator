@@ -19,24 +19,51 @@ const PERSISTENT_SCHEMA_CACHE_FILE = 'persistent_schema_cache.json';
 const TEMPORARY_SCHEMA_CACHE_FILE = 'temporary_schema_cache.json';
 
 /**
+ * Updates URLs in a description string.
+ * 
+ * This function replaces custom placeholders like $(url:key)[label] with actual links
+ * from the urlReplacements map, and also updates existing relative hrefs if a matching
+ * replacement is found. Absolute URLs are left unchanged.
  * 
  * @param {string} description 
  * @param {object} urlReplacements
- * @returns {string} Updated descriptions where URLs have been replaced.
+ * @param {string} revision - used to supress logging for all but the "tip" revision 
+ * @returns {string} Updated descriptions where URLs have been replaced or updated.
  */
-export function replaceUrlsInDescription(description, urlReplacements) {
-  return description.replace(
+export function replaceUrlsInDescription(description, urlReplacements, revision) {
+  // 1. Replace existing hrefs with relative URLs
+  description = description.replace(
+    /<a\s+[^>]*href=(['"])(?![a-z][a-z0-9+.-]*:|\/\/)([^'"]+)\1([^>]*)>/gi,
+    (match, quote, relUrl, rest) => {
+      const replacementUrl = urlReplacements[relUrl.trim()];
+      if (!replacementUrl) {
+        if (revision === "tip") {
+          console.log(`Unknown relative URL in href: ${relUrl}`);
+        }
+        return match; // leave as-is if no replacement found
+      }
+      return `<a href=${quote}${replacementUrl}${quote}${rest}>`;
+    }
+  );
+
+  // 2. Replace $(url:key)[label] placeholders
+  description = description.replace(
     /\$\(\s*url\s*:\s*([^)]+?)\s*\)\[(.+?)\]/g,
     (match, placeholder, label) => {
       const url = urlReplacements[placeholder.trim()];
       if (!url) {
-        console.log(`Unknown url placeholder: ${placeholder}`);
-        return match; // If no URL found, leave it as-is
+        if (revision === "tip") {
+          console.log(`Unknown url placeholder: ${placeholder}`);
+        }
+        return match; // leave as-is
       }
       return `<a href='${url}'>${label}</a>`;
     }
   );
+
+  return description;
 }
+
 
 /**
  * Simple helper function to sort nested objects by keys.
@@ -76,7 +103,7 @@ export async function writePrettyJSONFile(filePath, json) {
  * Simple helper function to check if a URL is valid.
  *
  * @param {string} url
- * @param {string} [domainName] - Optional domain name for logging purposes
+ * @param {string} [placeholder] - Optional placeholder name for logging purposes
  *
  * @returns {boolean} true if the URL returns a successful response, false otherwise
  */
