@@ -579,8 +579,10 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
     }
     const anchor = anchorParts.join('-').toLowerCase();
     const api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
-    value.annotations.push({ api_documentation_url });
-    await validateUrl(api_documentation_url);
+    const isValidURL = await validateUrl(api_documentation_url, `missing documentation required for compat data: ${JSON.stringify(searchPath)}`);
+    if (isValidURL) {
+      value.annotations.push({ api_documentation_url });
+    }
   }
 
   // Generate compat data from schema files if version_added was not yet annotated.
@@ -605,13 +607,10 @@ function getApiDocSlug(config) {
   if (config.docRelease === 'beta') {
     return `${API_DOC_BASE_URL}/beta-mv${config.manifest_version}`;
   }
-  if (config.docRelease === 'release') {
-    return `${API_DOC_BASE_URL}/mv${config.manifest_version}`;
-  }
   if (config.docRelease === 'esr') {
     return `${API_DOC_BASE_URL}/esr-mv${config.manifest_version}`;
   }
-  return `${API_DOC_BASE_URL}/latest`;
+  return `${API_DOC_BASE_URL}/mv${config.manifest_version}`;
 }
 
 /**
