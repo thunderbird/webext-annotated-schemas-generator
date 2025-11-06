@@ -328,7 +328,7 @@ export async function processSchema({
       pathElements.at(3).ref === 'choices'
     )
   ) {
-    if (pathElements.length == 1 ||
+    if (pathElements.length === 1 ||
       [
         'types',
         'functions',
@@ -486,8 +486,8 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
   while (searchPath.length > testDepth) {
     // The searchPath may by of type idx (ref is an idx) or of type property/name
     // (ref is a name). For the idx case, more info is avail in the info object.
-    let prevEntry = entry;
-    if (searchPath[testDepth].type == "idx" && searchPath[testDepth].info?.name) {
+    // let prevEntry = entry;
+    if (searchPath[testDepth].type === "idx" && searchPath[testDepth].info?.name) {
       entry = entry[searchPath[testDepth].info.name];
     } else {
       entry = entry[searchPath[testDepth].ref];

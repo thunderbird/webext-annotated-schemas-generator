@@ -37,7 +37,7 @@ export function replaceUrlsInDescription(description, urlReplacements, revision)
     (match, quote, relUrl, rest) => {
       const replacementUrl = urlReplacements[relUrl.trim()];
       if (!replacementUrl) {
-        if (revision == "tip") {
+        if (revision === "tip") {
           console.log(`Unknown relative URL in href: ${relUrl}`);
         }
         return match; // leave as-is if no replacement found
@@ -52,7 +52,7 @@ export function replaceUrlsInDescription(description, urlReplacements, revision)
     (match, placeholder, label) => {
       const url = urlReplacements[placeholder.trim()];
       if (!url) {
-        if (revision == "tip") {
+        if (revision === "tip") {
           console.log(`Unknown url placeholder: ${placeholder}`);
         }
         return match; // leave as-is
