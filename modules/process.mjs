@@ -386,7 +386,7 @@ export async function processSchema({
           v = v.replace(/:permission:`(.*?)`/g, '<permission>$1</permission>');
 
           // Replace URLs and single or double back ticks and rebrand.
-          v = replaceUrlsInDescription(v, config.urlReplacements)
+          v = replaceUrlsInDescription(v, config.urlReplacements, revision)
             .replace(/``(.+?)``/g, '<val>$1</val>')
             .replace(/`(.+?)`/g, '<val>$1</val>')
             .replaceAll("Firefox", "Thunderbird");
