@@ -388,7 +388,7 @@ export async function processSchema({
           v = v.replace(/:permission:`(.*?)`/g, '<permission>$1</permission>');
 
           // Replace URLs and single back ticks.
-          v = replaceUrlsInDescription(v, config.urlReplacements, revision)
+          v = replaceUrlsInDescription(v, config.urlReplacements)
             .replace(/`(.+?)`/g, '<val>$1</val>');
 
           accumulator[key] = v;
@@ -562,7 +562,7 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
     }
     const anchor = anchorParts.join('-').toLowerCase();
     const api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
-    const isValidURL = await validateUrl(api_documentation_url, `missing documentation required for compat data: ${JSON.stringify(searchPath)}`);
+    const isValidURL = await validateUrl(api_documentation_url);
     if (isValidURL) {
       value.annotations.push({ api_documentation_url });
     }
@@ -590,10 +590,16 @@ function getApiDocSlug(config) {
   if (config.docRelease === 'beta') {
     return `${API_DOC_BASE_URL}/beta-mv${config.manifest_version}`;
   }
+  if (config.docRelease === 'release') {
+    return `${API_DOC_BASE_URL}/release-mv${config.manifest_version}`;
+  }
   if (config.docRelease === 'esr') {
     return `${API_DOC_BASE_URL}/esr-mv${config.manifest_version}`;
   }
-  return `${API_DOC_BASE_URL}/mv${config.manifest_version}`;
+  if (config.docRelease.startsWith('esr')) {
+    return `${API_DOC_BASE_URL}/${config.docRelease.substring(3)}-esr-mv${config.manifest_version}`;
+  }
+  return `${API_DOC_BASE_URL}/latest`;
 }
 
 /**
