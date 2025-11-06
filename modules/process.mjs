@@ -178,7 +178,7 @@ export async function processSchema({
     const filtered = value.filter(isInVersionRange);
     for (let i = 0; i < filtered.length; i++) {
       // The default is to identify nested elements via their index.
-      let newPathElement = { ref: i, type: 'idx' };
+      let newPathElement = { ref: i, type: 'idx', info: filtered[i] };
       switch (pathElements.at(-1)?.ref) {
         case 'choices':
         case 'parameters':
@@ -279,7 +279,7 @@ export async function processSchema({
       pathElements.at(-1)?.ref
     )
   ) {
-    pathElements.push({ ref: '0', type: 'idx' });
+    pathElements.push({ ref: '0', type: 'idx', info: {} });
   }
 
   // When searching for enums, the compat data generator uses the annotated enums
@@ -298,7 +298,7 @@ export async function processSchema({
     // a historical schema, where compat data calculation is not needed.
     !searchPath &&
     // Skip namespace at the top level.
-    pathElements.length > 1 &&
+    pathElements.length > 0 &&
     // Process only actual API elements, skip groups.
     isOdd(pathElements.length) &&
     ![
@@ -328,7 +328,7 @@ export async function processSchema({
       pathElements.at(3).ref === 'choices'
     )
   ) {
-    if (
+    if (pathElements.length == 1 ||
       [
         'types',
         'functions',
@@ -381,18 +381,17 @@ export async function processSchema({
         if (typeof v === 'string') {
           // Newer schema files use the Firefox notation directly, but older
           // ones may still use the deprecated reStructuredText notations.
-          // Fix any remaining deprecated notation.
-          v = v.replace(/``(.+?)``/g, '<val>$1</val>');
           v = v.replace(/:doc:`(.*?)`/g, '$(doc:$1)');
           v = v.replace(/:ref:`(.*?)`/g, '$(ref:$1)');
           v = v.replace(/:permission:`(.*?)`/g, '<permission>$1</permission>');
 
-          // Replace URLs and single back ticks.
+          // Replace URLs and single or double back ticks and rebrand.
           v = replaceUrlsInDescription(v, config.urlReplacements)
-            .replace(/`(.+?)`/g, '<val>$1</val>');
-
-          accumulator[key] = v;
+            .replace(/``(.+?)``/g, '<val>$1</val>')
+            .replace(/`(.+?)`/g, '<val>$1</val>')
+            .replaceAll("Firefox", "Thunderbird");
         }
+        accumulator[key] = v;
         break;
       default:
         accumulator[key] = v;
@@ -471,18 +470,34 @@ function getNestedIdOrNamespace(value, searchString) {
  *    Thunderbird schema files.
  */
 async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
-  const [namespaceName, , entryName, , paramName] = searchPath.map(
-    (e) => e.ref
-  );
-
-  let entry =
-    bcd.webextensions.api[namespaceName] &&
-    bcd.webextensions.api[namespaceName][entryName];
-  if (entry && paramName) {
-    entry = entry[paramName];
+  // Allow to access nested object by specifying a path, for example:
+  // entry = getNested(bcd.webextensions.api, "privacy.network")
+  const getNested = (obj, path) => {
+    return path.split('.').reduce((acc, key) => acc?.[key], obj);
   }
+
+  let entry = getNested(bcd.webextensions.api, searchPath[0].ref);
   if (!entry) {
     return;
+  }
+
+  // Dive and follow the searchPath.
+  let testDepth = 2
+  while (searchPath.length > testDepth) {
+    // The searchPath may by of type idx (ref is an idx) or of type property/name
+    // (ref is a name). For the idx case, more info is avail in the info object.
+    let prevEntry = entry;
+    if (searchPath[testDepth].type == "idx" && searchPath[testDepth].info?.name) {
+      entry = entry[searchPath[testDepth].info.name];
+    } else {
+      entry = entry[searchPath[testDepth].ref];
+    }
+    if (!entry) {
+      // Helpful logging to understand what is going on here.
+      // console.log({ searchPath, prevEntry });
+      return;
+    }
+    testDepth += 2;
   }
 
   const compatData = entry.__compat;
@@ -525,7 +540,8 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
               ? compatData.support.firefox.notes
               : [compatData.support.firefox.notes];
             notes.forEach((note) => {
-              value.annotations.push({ note, bcd: true });
+              // Also rebrand Firefox notes on-the-fly to Thunderbird.
+              value.annotations.push({ note: note.replaceAll("Firefox", "Thunderbird"), bcd: true });
             });
           }
         }
@@ -552,6 +568,7 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
     value.annotations = [];
   }
 
+  // Add api_documentation_url for main entries (functions, events, ...)
   if (searchPath.length === 3) {
     const [namespaceName, , entryName] = searchPath.map((e) => e.ref);
     const anchorParts = [entryName];
@@ -562,10 +579,8 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
     }
     const anchor = anchorParts.join('-').toLowerCase();
     const api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
-    const isValidURL = await validateUrl(api_documentation_url);
-    if (isValidURL) {
-      value.annotations.push({ api_documentation_url });
-    }
+    value.annotations.push({ api_documentation_url });
+    await validateUrl(api_documentation_url);
   }
 
   // Generate compat data from schema files if version_added was not yet annotated.
@@ -591,13 +606,10 @@ function getApiDocSlug(config) {
     return `${API_DOC_BASE_URL}/beta-mv${config.manifest_version}`;
   }
   if (config.docRelease === 'release') {
-    return `${API_DOC_BASE_URL}/release-mv${config.manifest_version}`;
+    return `${API_DOC_BASE_URL}/mv${config.manifest_version}`;
   }
   if (config.docRelease === 'esr') {
     return `${API_DOC_BASE_URL}/esr-mv${config.manifest_version}`;
-  }
-  if (config.docRelease.startsWith('esr')) {
-    return `${API_DOC_BASE_URL}/${config.docRelease.substring(3)}-esr-mv${config.manifest_version}`;
   }
   return `${API_DOC_BASE_URL}/latest`;
 }
