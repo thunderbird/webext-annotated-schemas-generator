@@ -28,7 +28,9 @@ jobs:
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SCHEMA_REPO_DEPLOY_KEY }}" > ~/.ssh/id_rsa
+          printf "%s" "${{ secrets.SCHEMA_REPO_DEPLOY_KEY }}" > ~/.ssh/id_rsa
+          echo "Total chars: $(echo "${{ secrets.SCHEMA_REPO_DEPLOY_KEY }}" | wc -c)"
+          echo "Newline count: $(echo "${{ secrets.SCHEMA_REPO_DEPLOY_KEY }}" | grep -o '\n' | wc -l)"
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
 
