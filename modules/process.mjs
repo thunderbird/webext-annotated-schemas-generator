@@ -2,7 +2,12 @@ import bcd from '@mdn/browser-compat-data' with { type: 'json' };
 import jsonUtils from 'comment-json';
 
 import { getHgFilePath, getHgRevisionLogPath } from './mozilla.mjs';
-import { validateUrl, readCachedUrl, replaceUrlsInDescription, isOdd } from './tools.mjs';
+import {
+  validateUrl,
+  readCachedUrl,
+  replaceUrlsInDescription,
+  isOdd,
+} from './tools.mjs';
 import { COMM_VERSION_FILE, API_DOC_BASE_URL } from './constants.mjs';
 
 /**
@@ -328,7 +333,8 @@ export async function processSchema({
       pathElements.at(3).ref === 'choices'
     )
   ) {
-    if (pathElements.length === 1 ||
+    if (
+      pathElements.length === 1 ||
       [
         'types',
         'functions',
@@ -389,7 +395,7 @@ export async function processSchema({
           v = replaceUrlsInDescription(v, config.urlReplacements, revision)
             .replace(/``(.+?)``/g, '<val>$1</val>')
             .replace(/`(.+?)`/g, '<val>$1</val>')
-            .replaceAll("Firefox", "Thunderbird");
+            .replaceAll('Firefox', 'Thunderbird');
         }
         accumulator[key] = v;
         break;
@@ -474,7 +480,7 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
   // entry = getNested(bcd.webextensions.api, "privacy.network")
   const getNested = (obj, path) => {
     return path.split('.').reduce((acc, key) => acc?.[key], obj);
-  }
+  };
 
   let entry = getNested(bcd.webextensions.api, searchPath[0].ref);
   if (!entry) {
@@ -482,12 +488,15 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
   }
 
   // Dive and follow the searchPath.
-  let testDepth = 2
+  let testDepth = 2;
   while (searchPath.length > testDepth) {
     // The searchPath may by of type idx (ref is an idx) or of type property/name
     // (ref is a name). For the idx case, more info is avail in the info object.
     // let prevEntry = entry;
-    if (searchPath[testDepth].type === "idx" && searchPath[testDepth].info?.name) {
+    if (
+      searchPath[testDepth].type === 'idx' &&
+      searchPath[testDepth].info?.name
+    ) {
       entry = entry[searchPath[testDepth].info.name];
     } else {
       entry = entry[searchPath[testDepth].ref];
@@ -525,9 +534,9 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
               value.annotations.push({
                 [key]:
                   !isNaN(parseInt(thunderbird_version, 10)) &&
-                    (firefox_version === true ||
-                      isNaN(parseInt(firefox_version, 10)) ||
-                      parseInt(thunderbird_version, 10) >
+                  (firefox_version === true ||
+                    isNaN(parseInt(firefox_version, 10)) ||
+                    parseInt(thunderbird_version, 10) >
                       parseInt(firefox_version, 10))
                     ? thunderbird_version
                     : firefox_version,
@@ -541,7 +550,10 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
               : [compatData.support.firefox.notes];
             notes.forEach((note) => {
               // Also rebrand Firefox notes on-the-fly to Thunderbird.
-              value.annotations.push({ note: note.replaceAll("Firefox", "Thunderbird"), bcd: true });
+              value.annotations.push({
+                note: note.replaceAll('Firefox', 'Thunderbird'),
+                bcd: true,
+              });
             });
           }
         }
@@ -579,7 +591,10 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
     }
     const anchor = anchorParts.join('-').toLowerCase();
     const api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
-    const isValidURL = await validateUrl(api_documentation_url, `missing documentation required for compat data: ${JSON.stringify(searchPath)}`);
+    const isValidURL = await validateUrl(
+      api_documentation_url,
+      `missing documentation required for compat data: ${JSON.stringify(searchPath)}`
+    );
     if (isValidURL) {
       value.annotations.push({ api_documentation_url });
     }

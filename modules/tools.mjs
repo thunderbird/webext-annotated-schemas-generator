@@ -20,24 +20,28 @@ const TEMPORARY_SCHEMA_CACHE_FILE = 'temporary_schema_cache.json';
 
 /**
  * Updates URLs in a description string.
- * 
+ *
  * This function replaces custom placeholders like $(url:key)[label] with actual links
  * from the urlReplacements map, and also updates existing relative hrefs if a matching
  * replacement is found. Absolute URLs are left unchanged.
- * 
- * @param {string} description 
+ *
+ * @param {string} description
  * @param {object} urlReplacements
- * @param {string} revision - used to supress logging for all but the "tip" revision 
+ * @param {string} revision - used to supress logging for all but the "tip" revision
  * @returns {string} Updated descriptions where URLs have been replaced or updated.
  */
-export function replaceUrlsInDescription(description, urlReplacements, revision) {
+export function replaceUrlsInDescription(
+  description,
+  urlReplacements,
+  revision
+) {
   // 1. Replace existing hrefs with relative URLs
   description = description.replace(
     /<a\s+[^>]*href=(['"])(?![a-z][a-z0-9+.-]*:|\/\/)([^'"]+)\1([^>]*)>/gi,
     (match, quote, relUrl, rest) => {
       const replacementUrl = urlReplacements[relUrl.trim()];
       if (!replacementUrl) {
-        if (revision === "tip") {
+        if (revision === 'tip') {
           console.log(`Unknown relative URL in href: ${relUrl}`);
         }
         return match; // leave as-is if no replacement found
@@ -52,7 +56,7 @@ export function replaceUrlsInDescription(description, urlReplacements, revision)
     (match, placeholder, label) => {
       const url = urlReplacements[placeholder.trim()];
       if (!url) {
-        if (revision === "tip") {
+        if (revision === 'tip') {
           console.log(`Unknown url placeholder: ${placeholder}`);
         }
         return match; // leave as-is
@@ -63,7 +67,6 @@ export function replaceUrlsInDescription(description, urlReplacements, revision)
 
   return description;
 }
-
 
 /**
  * Simple helper function to sort nested objects by keys.
@@ -119,13 +122,13 @@ export async function validateUrl(url, placeholder = '') {
     } else {
       const logEntries = [response.status, placeholder, url];
       console.log(
-        ` - problematic URL found: ${logEntries.filter(Boolean).join(" - ")}`
+        ` - problematic URL found: ${logEntries.filter(Boolean).join(' - ')}`
       );
       return false;
     }
   } catch (error) {
     console.log(
-      ` - problematic URL found: network error - ${placeholder || "?"} - ${url}`
+      ` - problematic URL found: network error - ${placeholder || '?'} - ${url}`
     );
     return false;
   }
@@ -258,4 +261,23 @@ export async function getJsonFiles(folderPath) {
  */
 export function isOdd(num) {
   return num % 2 !== 0;
+}
+
+/**
+ * Filters the `properties` of an `aEntry` object so that it only includes
+ * properties which also exist in the corresponding `sEntry.properties` object.
+ *
+ * @param {object} aEntry - annotation definition
+ * @param {object} sEntry - schema definition
+ * @returns {object} The filtered aEntry object.
+ */
+export function filterAnnotationEntry(aEntry, sEntry) {
+  return {
+    ...aEntry,
+    properties: Object.fromEntries(
+      Object.entries(aEntry.properties || {}).filter(
+        ([key]) => key in (sEntry.properties || {})
+      )
+    ),
+  };
 }

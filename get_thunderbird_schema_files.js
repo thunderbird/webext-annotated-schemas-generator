@@ -22,6 +22,7 @@ import {
   sortKeys,
   validateUrl,
   writePrettyJSONFile,
+  filterAnnotationEntry,
 } from './modules/tools.mjs';
 
 import {
@@ -570,7 +571,17 @@ async function mergeAnnotations(config, schema, annotation, basePath) {
         );
       if (sEntries.length) {
         for (const sEntry of sEntries) {
-          await mergeAnnotations(config, sEntry, aEntry, basePath);
+          // An annotated WebExtensionManifest aEntry may only be merged into an
+          // schema sEntry, if they have a matching property.
+          await mergeAnnotations(
+            config,
+            sEntry,
+            sEntry.$extend === 'WebExtensionManifest' &&
+              aEntry.$extend === sEntry.$extend
+              ? filterAnnotationEntry(aEntry, sEntry)
+              : aEntry,
+            basePath
+          );
         }
       } else {
         throw new Error(`Unmatched entry: ${JSON.stringify(aEntry, null, 2)}`);
@@ -596,7 +607,12 @@ async function mergeAnnotations(config, schema, annotation, basePath) {
             );
           }
         } else {
-          await mergeAnnotations(config, schema[aEntry], annotation[aEntry], basePath);
+          await mergeAnnotations(
+            config,
+            schema[aEntry],
+            annotation[aEntry],
+            basePath
+          );
         }
       }
     }
@@ -617,10 +633,15 @@ async function expandAnnotations(config, aEntry, annotation, basePath) {
   switch (aEntry) {
     case 'annotations':
       for (const aObj of annotation[aEntry]) {
-        for (let type of ["text", "hint", "note", "warning"]) {
-          if (!aObj[type]) continue
+        for (const type of ['text', 'hint', 'note', 'warning']) {
+          if (!aObj[type]) {
+            continue;
+          }
           // Replace URLs and single or double back ticks.
-          aObj[type] = replaceUrlsInDescription(aObj[type], config.urlReplacements)
+          aObj[type] = replaceUrlsInDescription(
+            aObj[type],
+            config.urlReplacements
+          )
             .replace(/``(.+?)``/g, '<val>$1</val>')
             .replace(/`(.+?)`/g, '<val>$1</val>');
         }
@@ -628,14 +649,19 @@ async function expandAnnotations(config, aEntry, annotation, basePath) {
         if (aObj.list) {
           for (let i = 0; i < aObj.list.length; i++) {
             // Replace URLs and single or double back ticks.
-            aObj.list[i] = replaceUrlsInDescription(aObj.list[i], config.urlReplacements)
+            aObj.list[i] = replaceUrlsInDescription(
+              aObj.list[i],
+              config.urlReplacements
+            )
               .replace(/``(.+?)``/g, '<val>$1</val>')
               .replace(/`(.+?)`/g, '<val>$1</val>');
           }
         }
 
         if (aObj.code) {
-          if (Array.isArray(aObj.code)) continue;
+          if (Array.isArray(aObj.code)) {
+            continue;
+          }
           if (!aObj.type) {
             if (aObj.code.endsWith('.js') || aObj.code.endsWith('.mjs')) {
               aObj.type = 'JavaScript';
@@ -647,7 +673,10 @@ async function expandAnnotations(config, aEntry, annotation, basePath) {
               aObj.type = 'JSON';
             }
           }
-          const code = await fs.readFile(path.join(basePath, aObj.code), 'utf-8');
+          const code = await fs.readFile(
+            path.join(basePath, aObj.code),
+            'utf-8'
+          );
           aObj.code = code.replaceAll('\r', '').split('\n');
         }
       }

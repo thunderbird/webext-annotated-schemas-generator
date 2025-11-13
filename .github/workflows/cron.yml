@@ -2,8 +2,8 @@ name: Scheduled update of schema all files
 
 on:
   schedule:
-    - cron: '0 2 * * 3'   # Runs every Wednesday at 2:00 AM UTC
-  workflow_dispatch:      # Allow manual trigger as well
+    - cron: '0 2 * * 3' # Runs every Wednesday at 2:00 AM UTC
+  workflow_dispatch: # Allow manual trigger as well
 
 jobs:
   update-schema-files-esr-mv2:
