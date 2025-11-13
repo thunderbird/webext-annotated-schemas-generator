@@ -12,7 +12,7 @@ on:
         type: string
         default: 3
     secrets:
-      SCHEMA_REPO_DEPLOY_KEY: 
+      SCHEMA_REPO_DEPLOY_KEY:
         required: true
 
 jobs:
@@ -98,7 +98,7 @@ jobs:
         run: |
           gh extension install actions/gh-actions-cache
           gh actions-cache delete "schema-cache" --confirm
-          
+
       - name: Update cache with new data.json
         uses: actions/cache@v3
         with:
