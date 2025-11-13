@@ -22,6 +22,7 @@ import {
   sortKeys,
   validateUrl,
   writePrettyJSONFile,
+  filterAnnotationEntry,
 } from './modules/tools.mjs';
 
 import {
@@ -570,7 +571,16 @@ async function mergeAnnotations(config, schema, annotation, basePath) {
         );
       if (sEntries.length) {
         for (const sEntry of sEntries) {
-          await mergeAnnotations(config, sEntry, aEntry, basePath);
+          // An annotated WebExtensionManifest aEntry may only be merged into an
+          // schema sEntry, if they have a matching property.
+          await mergeAnnotations(
+            config,
+            sEntry,
+            sEntry.$extend == "WebExtensionManifest" && aEntry.$extend == sEntry.$extend
+              ? filterAnnotationEntry(aEntry, sEntry)
+              : aEntry,
+            basePath
+          );
         }
       } else {
         throw new Error(`Unmatched entry: ${JSON.stringify(aEntry, null, 2)}`);

@@ -259,3 +259,22 @@ export async function getJsonFiles(folderPath) {
 export function isOdd(num) {
   return num % 2 !== 0;
 }
+
+/**
+ * Filters the `properties` of an `aEntry` object so that it only includes
+ * properties which also exist in the corresponding `sEntry.properties` object.
+ * 
+ * @param {object} aEntry - annotation definition
+ * @param {object} sEntry - schema definition
+ * @returns {object} The filtered aEntry object.
+ */
+export function filterAnnotationEntry(aEntry, sEntry) {
+  return {
+    ...aEntry,
+    properties: Object.fromEntries(
+      Object.entries(aEntry.properties || {}).filter(([key]) =>
+        key in (sEntry.properties || {})
+      )
+    ),
+  };
+}
