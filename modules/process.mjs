@@ -534,9 +534,9 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
               value.annotations.push({
                 [key]:
                   !isNaN(parseInt(thunderbird_version, 10)) &&
-                  (firefox_version === true ||
-                    isNaN(parseInt(firefox_version, 10)) ||
-                    parseInt(thunderbird_version, 10) >
+                    (firefox_version === true ||
+                      isNaN(parseInt(firefox_version, 10)) ||
+                      parseInt(thunderbird_version, 10) >
                       parseInt(firefox_version, 10))
                     ? thunderbird_version
                     : firefox_version,
@@ -624,6 +624,9 @@ function getApiDocSlug(config) {
   }
   if (config.docRelease === 'esr') {
     return `${API_DOC_BASE_URL}/esr-mv${config.manifest_version}`;
+  }
+  if (config.docRelease === 'daily') {
+    return `${API_DOC_BASE_URL}/daily-mv${config.manifest_version}`;
   }
   return `${API_DOC_BASE_URL}/mv${config.manifest_version}`;
 }
