@@ -85,6 +85,9 @@ async function main() {
       }
       config.release = `esr${esr}`;
       config.docRelease = `esr`;
+    } else if (config.release === 'daily') {
+      config.release = `central`;
+      config.docRelease = `daily`;
     } else {
       config.docRelease = config.release;
     }
