@@ -1,4 +1,4 @@
-name: Scheduled update of schema all files
+name: Update all schema files (cron + manual)
 
 on:
   schedule:

@@ -1,4 +1,4 @@
-name: Update of daily schema files
+name: Update daily schema files (manual)
 
 on:
   workflow_dispatch: # Allow manual trigger as well
