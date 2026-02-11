@@ -6,7 +6,6 @@ on:
 jobs:
   update-schema-files-daily-mv3:
     if: ${{ always() }}
-    needs: update-schema-files-beta-mv3
     uses: ./.github/workflows/update.yml
     with:
       release: daily
