@@ -23,9 +23,9 @@ jobs:
 
     steps:
       - name: Check repository
-        if: github.repository != 'thunderbird/webext-annotated-schemas-generator/'
+        if: github.repository != 'thunderbird/webext-annotated-schemas-generator'
         run: |
-          echo "::error::This workflow is designed to run only in thunderbird/webext-annotated-schemas-generator/
+          echo "::error::This workflow is designed to run only in thunderbird/webext-annotated-schemas-generator"
           echo "::error::Current repository: ${{ github.repository }}"
           echo "::error::This is likely a fork. Please disable GitHub Actions in your fork settings:"
           echo "::error::Go to Settings → Actions → General → Actions permissions → Disable actions"
