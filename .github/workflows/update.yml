@@ -22,6 +22,15 @@ jobs:
       BRANCH: ${{ inputs.release }}-mv${{ inputs.manifestVersion }}
 
     steps:
+      - name: Check repository
+        if: github.repository != 'thunderbird/webext-annotated-schemas-generator/'
+        run: |
+          echo "::error::This workflow is designed to run only in thunderbird/webext-annotated-schemas-generator/
+          echo "::error::Current repository: ${{ github.repository }}"
+          echo "::error::This is likely a fork. Please disable GitHub Actions in your fork settings:"
+          echo "::error::Go to Settings → Actions → General → Actions permissions → Disable actions"
+          exit 1
+
       - name: Checkout generator default branch
         uses: actions/checkout@v4
 
@@ -29,10 +38,27 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           printf "%s" "${{ secrets.SCHEMA_REPO_DEPLOY_KEY }}" > ~/.ssh/id_rsa
-          echo "Total chars: $(echo "${{ secrets.SCHEMA_REPO_DEPLOY_KEY }}" | wc -c)"
-          echo "Newline count: $(echo "${{ secrets.SCHEMA_REPO_DEPLOY_KEY }}" | grep -o '\n' | wc -l)"
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Diagnose SSH key format
+        run: |
+          echo "=== SSH/OpenSSL versions on runner ==="
+          ssh -V 2>&1
+          openssl version
+          echo ""
+          echo "=== Key format detection ==="
+          if head -n 1 ~/.ssh/id_rsa | grep -q "BEGIN OPENSSH PRIVATE KEY"; then
+            echo "Key format: OpenSSH"
+          elif head -n 1 ~/.ssh/id_rsa | grep -q "BEGIN RSA PRIVATE KEY"; then
+            echo "Key format: PEM/RSA"
+          elif head -n 1 ~/.ssh/id_rsa | grep -q "BEGIN EC PRIVATE KEY"; then
+            echo "Key format: PEM/EC"
+          elif head -n 1 ~/.ssh/id_rsa | grep -q "BEGIN PRIVATE KEY"; then
+            echo "Key format: PKCS#8 PEM"
+          else
+            echo "Key format: Unknown or unrecognized"
+          fi
 
       - name: Clone webext-annotated-schemas repo
         run: |
