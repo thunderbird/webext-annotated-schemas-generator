@@ -1,0 +1,15 @@
+name: Update of daily schema files
+
+on:
+  workflow_dispatch: # Allow manual trigger as well
+
+jobs:
+  update-schema-files-daily-mv3:
+    if: ${{ always() }}
+    needs: update-schema-files-beta-mv3
+    uses: ./.github/workflows/update.yml
+    with:
+      release: daily
+      manifestVersion: 3
+    secrets:
+      SCHEMA_REPO_DEPLOY_KEY: ${{ secrets.SCHEMA_REPO_DEPLOY_KEY }}      
