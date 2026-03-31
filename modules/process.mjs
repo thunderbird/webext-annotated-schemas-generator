@@ -583,14 +583,23 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
   // Add api_documentation_url for main entries (functions, events, ...)
   if (searchPath.length === 3) {
     const [namespaceName, , entryName] = searchPath.map((e) => e.ref);
-    const anchorParts = [entryName];
-    if (value.parameters) {
-      anchorParts.push(
-        ...value.parameters.map((e) => e.name).filter((e) => e !== 'callback')
-      );
+    let api_documentation_url;
+
+    // types.Setting properties are rendered as sub-pages, not as anchors
+    // on the parent page.
+    if (value['$ref'] === 'types.Setting') {
+      api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.${entryName}.html`;
+    } else {
+      const anchorParts = [entryName];
+      if (value.parameters) {
+        anchorParts.push(
+          ...value.parameters.map((e) => e.name).filter((e) => e !== 'callback')
+        );
+      }
+      const anchor = anchorParts.join('-').toLowerCase();
+      api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
     }
-    const anchor = anchorParts.join('-').toLowerCase();
-    const api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
+
     const isValidURL = await validateUrl(
       api_documentation_url,
       `missing documentation required for compat data: ${JSON.stringify(searchPath)}`
