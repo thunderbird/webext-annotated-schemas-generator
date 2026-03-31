@@ -356,15 +356,15 @@ async function downloadFilesFromMozilla(release) {
         getHgFolderZipPath(repository, schemaFolder.folderPath, config.commRev),
         zipFilePath
       );
+      console.log(` - unpacking ${zipFileName} ...`);
+      await extract(path.resolve(zipFilePath), {
+        dir: path.resolve(config.tempFolder),
+        onEntry: (entry) => folders.add(entry.fileName.split('/')[0]),
+      });
+      await fs.unlink(zipFilePath);
     } catch (ex) {
-      throw new Error('Download failed, try again later');
+      console.warn(` !! Skipping ${zipFileName}: ${ex.message}`);
     }
-    console.log(` - unpacking ${zipFileName} ...`);
-    await extract(path.resolve(zipFilePath), {
-      dir: path.resolve(config.tempFolder),
-      onEntry: (entry) => folders.add(entry.fileName.split('/')[0]),
-    });
-    await fs.unlink(zipFilePath);
   }
 
   // Download MOZILLA schema files.
@@ -381,15 +381,15 @@ async function downloadFilesFromMozilla(release) {
         ),
         zipFilePath
       );
+      console.log(` - unpacking ${zipFileName} ...`);
+      await extract(path.resolve(zipFilePath), {
+        dir: path.resolve(config.tempFolder),
+        onEntry: (entry) => folders.add(entry.fileName.split('/')[0]),
+      });
+      await fs.unlink(zipFilePath);
     } catch (ex) {
-      throw new Error('Download failed, try again later');
+      console.warn(` !! Skipping ${zipFileName}: ${ex.message}`);
     }
-    console.log(` - unpacking ${zipFileName} ...`);
-    await extract(path.resolve(zipFilePath), {
-      dir: path.resolve(config.tempFolder),
-      onEntry: (entry) => folders.add(entry.fileName.split('/')[0]),
-    });
-    await fs.unlink(zipFilePath);
   }
 
   // Find the mozilla-* folder and rename /comm-* to /comm.

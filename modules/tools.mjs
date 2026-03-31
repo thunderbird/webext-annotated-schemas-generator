@@ -141,24 +141,43 @@ export async function validateUrl(url, placeholder = '') {
  * @param {string} url - The URL to download.
  * @param {string} filePath - The path to write the downloaded file to.
  */
-export async function downloadUrl(url, filePath) {
+export async function downloadUrl(url, filePath, retry = true) {
   console.log(` - downloading ${url} ...`);
   await new Promise((resolve) => setTimeout(resolve, 2500));
-  return new Promise((resolve, reject) => {
-    const file = createWriteStream(filePath);
-    https
-      .get(url, (response) => {
-        response.pipe(file);
-        file.on('finish', () => {
-          file.close(() => {
-            resolve(filePath);
+  try {
+    await new Promise((resolve, reject) => {
+      const file = createWriteStream(filePath);
+      https
+        .get(url, (response) => {
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            file.close();
+            reject(
+              new Error(
+                `Download failed with HTTP ${response.statusCode} for ${url}`
+              )
+            );
+            return;
+          }
+          response.pipe(file);
+          file.on('finish', () => {
+            file.close(() => {
+              resolve(filePath);
+            });
           });
+        })
+        .on('error', (err) => {
+          reject(err);
         });
-      })
-      .on('error', (err) => {
-        reject(err);
-      });
-  });
+    });
+  } catch (ex) {
+    if (retry) {
+      console.warn(` !! ${ex.message}, retrying in 5s ...`);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      return downloadUrl(url, filePath, false);
+    }
+    throw ex;
+  }
+  return filePath;
 }
 
 /**
