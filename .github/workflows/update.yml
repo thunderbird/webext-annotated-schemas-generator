@@ -32,7 +32,7 @@ jobs:
           exit 1
 
       - name: Checkout generator default branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up SSH
         run: |
@@ -70,7 +70,7 @@ jobs:
 
       - name: Restore cached persistent_schema_cache.json (if available)
         id: cache-restore
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: persistent_schema_cache.json
           key: schema-cache
@@ -103,9 +103,9 @@ jobs:
           exit 1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install dependencies
         run: |
@@ -126,7 +126,7 @@ jobs:
           gh actions-cache delete "schema-cache" --confirm
 
       - name: Update cache with new data.json
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: persistent_schema_cache.json
           key: schema-cache
