@@ -705,7 +705,13 @@ async function extractThunderbirdCompatData(config, fileName, searchPath) {
         COMM_VERSION_FILE,
         revision
       );
-      return readCachedUrl(version_url).then((v) => v.split('.').at(0));
+      return readCachedUrl(version_url).then((v) => {
+        const version = v.trim();
+        if (config.docRelease === 'esr') {
+          return version.replace(/[a-zA-Z]+$/, '');
+        }
+        return version.split('.').at(0);
+      });
     }
   }
 
