@@ -327,7 +327,9 @@ async function getMatchingRevisions(release) {
     throw new Error('Missing release parameter in getMatchingRevisions()');
   }
 
-  const temporary = release === 'central';
+  // Decide if responses should be cached. For example one could skip caching for
+  // release by setting temporary = release === 'central';
+  const temporary = false;
   const commRev = {
     rev: await getRevisionFromBuildHub(`comm-${release}`),
     temporary,

@@ -72,6 +72,5 @@ jobs:
     with:
       release: daily
       manifestVersion: 3
-      compatData: false
     secrets:
       SCHEMA_REPO_DEPLOY_KEY: ${{ secrets.SCHEMA_REPO_DEPLOY_KEY }}
