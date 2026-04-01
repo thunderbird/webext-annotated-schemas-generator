@@ -599,6 +599,10 @@ async function mergeAnnotations(config, schema, annotation, basePath) {
             basePath
           );
         }
+      } else if (aEntry.namespace) {
+        // Allow annotations to introduce new namespace entries (e.g., for
+        // documentation-only APIs like oauthProvider).
+        schema.push(aEntry);
       } else {
         throw new Error(`Unmatched entry: ${JSON.stringify(aEntry, null, 2)}`);
       }
