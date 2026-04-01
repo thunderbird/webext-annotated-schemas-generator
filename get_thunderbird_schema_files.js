@@ -85,7 +85,6 @@ async function main() {
         );
       }
       config.release = `esr${esr}`;
-      config.docRelease = `esr`;
 
       // Build ESR version list and fetch commRevs for all ESR repos.
       const esrVersions = await getSupportedESRVersions();
@@ -98,10 +97,8 @@ async function main() {
         };
       }
     } else if (config.release === 'daily' || config.release === 'central') {
+      // We allow "daily" as an input --release, but use "central".
       config.release = `central`;
-      config.docRelease = `daily`;
-    } else {
-      config.docRelease = config.release;
     }
 
     console.log(` Downloading files from Mozilla ...`);
@@ -114,7 +111,6 @@ async function main() {
   } else {
     // Set the release based on the provided folder name.
     config.release = path.basename(config.source).split('-')[1];
-    config.docRelease = config.release;
 
     console.log(` Downloading files from Mozilla ...`);
 

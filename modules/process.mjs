@@ -545,7 +545,7 @@ async function addFirefoxCompatData(config, schemaInfo, value, searchPath) {
                   : firefox_version;
 
               // Map version_added to ESR versions.
-              if (key === 'version_added' && config.docRelease === 'esr') {
+              if (key === 'version_added' && config.release.startsWith('esr')) {
                 const major = parseInt(version, 10);
                 if (!isNaN(major)) {
                   const esr = config.esrVersions.find((v) => v >= major);
@@ -591,7 +591,6 @@ async function addFirefoxCompatData(config, schemaInfo, value, searchPath) {
  *    should be searched for in historical schema files.
  */
 async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
-  // Add api_documentation_url if this is the types/events/functions level.
   if (!value.annotations) {
     value.annotations = [];
   }
@@ -616,17 +615,24 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
       api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
     }
 
-    const isValidURL = await validateUrl(
-      api_documentation_url,
-      `missing documentation required for compat data: ${JSON.stringify(searchPath)}`
-    );
-    if (isValidURL) {
+    if (config['no-link-check']) {
       value.annotations.push({ api_documentation_url });
+    } else {
+      const isValidURL = await validateUrl(
+        api_documentation_url,
+        `missing documentation required for compat data: ${JSON.stringify(searchPath)}`
+      );
+      if (isValidURL) {
+        value.annotations.push({ api_documentation_url });
+      }
     }
   }
 
   // Generate compat data from schema files if version_added was not yet annotated.
-  if (!value.annotations.find((a) => Object.hasOwn(a, 'version_added'))) {
+  if (
+    !config['no-compat-data'] &&
+    !value.annotations.find((a) => Object.hasOwn(a, 'version_added'))
+  ) {
     value.annotations.push({
       version_added: await extractThunderbirdCompatData(
         config,
@@ -644,13 +650,13 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
  * @param {Config} config - Global config data.
  */
 function getApiDocSlug(config) {
-  if (config.docRelease === 'beta') {
-    return `${API_DOC_BASE_URL}/beta-mv${config.manifest_version}`;
-  }
-  if (config.docRelease === 'esr') {
+  if (config.release.startsWith("esr")) {
     return `${API_DOC_BASE_URL}/esr-mv${config.manifest_version}`;
   }
-  if (config.docRelease === 'daily') {
+  if (config.release === 'beta') {
+    return `${API_DOC_BASE_URL}/beta-mv${config.manifest_version}`;
+  }
+  if (config.release === 'central') {
     return `${API_DOC_BASE_URL}/daily-mv${config.manifest_version}`;
   }
   return `${API_DOC_BASE_URL}/mv${config.manifest_version}`;
@@ -763,7 +769,7 @@ async function extractThunderbirdCompatData(config, fileName, searchPath) {
   const schemaFilePath = `mail/components/extensions/schemas/${fileName}`;
   let revisionList;
 
-  if (config.docRelease === 'esr') {
+  if (config.release.startsWith('esr')) {
     revisionList = await buildEsrRevisionList(config, schemaFilePath);
   } else {
     // For daily/beta/release: single repo, same as before.
@@ -778,7 +784,7 @@ async function extractThunderbirdCompatData(config, fileName, searchPath) {
     }
   }
 
-  const temporary = config.docRelease === 'esr' ? false : config.commRev.temporary;
+  const temporary = config.release.startsWith('esr') ? false : config.commRev.temporary;
   for (const entry of revisionList) {
     const result = await testRevision(
       config,
@@ -796,7 +802,7 @@ async function extractThunderbirdCompatData(config, fileName, searchPath) {
       );
       return readCachedUrl(version_url, { temporary }).then((v) => {
         const version = v.trim();
-        if (config.docRelease === 'esr') {
+        if (config.release.startsWith('esr')) {
           // Check if the major version matches the ESR version (backport).
           const major = Number(version.split('.')[0]);
           if (major === entry.esrVersion) {

@@ -34,12 +34,16 @@ Options:
                                 deleted.
    --release=name             - The name of the Thunderbird release to get the
                                 schema files for. The files will be downloaded
-                                from hg.mozilla.org. Examples: "central", "beta",
+                                from hg.mozilla.org. Examples: "daily", "beta",
                                 "esr" or "esr115". Either --release or --source
                                 has to be specified.
    --source=path              - Path to a local checkout of a mozilla repository
                                 with a matching /comm directory. Either --release
                                 or --source has to be specified.
+   --no-compat-data           - Skip generation of compatibility data (doc URLs,
+                                version_added, BCD data).
+   --no-link-check            - Skip validation of documentation URLs and always
+                                add them to the schema files.
 `;
 
 export const HG_URL = 'https://hg-edge.mozilla.org';

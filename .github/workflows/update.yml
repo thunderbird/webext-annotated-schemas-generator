@@ -114,7 +114,7 @@ jobs:
       - name: Run generator script for --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }}
         id: generate
         run: |
-          node get_thunderbird_schema_files.js --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }} --output=./output/schema-files/
+          node get_thunderbird_schema_files.js --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }} --output=./output/schema-files/ --no-link-check
 
       - name: Delete Previous Cache
         if: ${{ steps.cache-restore.outputs.cache-hit == 'true' }}
