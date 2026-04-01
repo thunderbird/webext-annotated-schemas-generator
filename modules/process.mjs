@@ -644,15 +644,16 @@ function getApiDocSlug(config) {
  * Analyze a historical schema file and check if a specific API element exists.
  *
  * @param {Config} config - Global config data.
+ * @param {string} repo - The repository name (e.g., "comm-esr128").
  * @param {string} fileName - Name of the Thunderbird schema file.
  * @param {array} searchPath - Path of the searched API element.
  * @param {string} revision - Historical revision (mercurial changeset identifier).
  *
  * @returns {boolean}
  */
-async function testRevision(config, fileName, searchPath, revision) {
+async function testRevision(config, repo, fileName, searchPath, revision) {
   const schema_url = getHgFilePath(
-    `comm-${config.release}`,
+    repo,
     `mail/components/extensions/schemas/${fileName}`,
     revision
   );
@@ -676,6 +677,44 @@ async function testRevision(config, fileName, searchPath, revision) {
 }
 
 /**
+ * Build a unified revision list for ESR scanning. Walks ESR repos from oldest
+ * to newest, skipping shared history between repos.
+ *
+ * @param {Config} config - Global config data.
+ * @param {string} schemaFilePath - Path of the schema file in the repo.
+ *
+ * @returns {Array<{node: string, repo: string, esrVersion: number}>}
+ */
+async function buildEsrRevisionList(config, schemaFilePath) {
+  const revisionList = [];
+  const seenRevisions = new Set();
+
+  for (const esrVersion of config.esrVersions) {
+    const repo = `comm-esr${esrVersion}`;
+    const commRev = config.esrCommRevs[esrVersion];
+    const rev_url = getHgRevisionLogPath(repo, schemaFilePath, commRev);
+    let rev;
+    try {
+      rev = jsonUtils.parse(await readCachedUrl(rev_url));
+    } catch (ex) {
+      console.warn(` !! Could not fetch revision log from ${repo}: ${ex.message}`);
+      continue;
+    }
+
+    // Walk oldest to newest, skip revisions already seen from older ESR repos.
+    for (let i = rev.entries.length; i > 0; i--) {
+      const entry = rev.entries.at(i - 1);
+      if (!seenRevisions.has(entry.node)) {
+        seenRevisions.add(entry.node);
+        revisionList.push({ node: entry.node, repo, esrVersion });
+      }
+    }
+  }
+
+  return revisionList;
+}
+
+/**
  * Request revision log for the specified file and find the first revision which
  * supports the specific API element.
  *
@@ -687,28 +726,49 @@ async function testRevision(config, fileName, searchPath, revision) {
  *    API element, or false.
  */
 async function extractThunderbirdCompatData(config, fileName, searchPath) {
-  const rev_url = getHgRevisionLogPath(
-    `comm-${config.release}`,
-    `mail/components/extensions/schemas/${fileName}`,
-    config.commRev
-  );
-  const rev = jsonUtils.parse(
-    await readCachedUrl(rev_url, { temporary: config.commRev === 'tip' })
-  );
+  const schemaFilePath = `mail/components/extensions/schemas/${fileName}`;
+  let revisionList;
 
-  for (let i = rev.entries.length; i > 0; i--) {
-    const revision = rev.entries.at(i - 1).node;
-    const result = await testRevision(config, fileName, searchPath, revision);
+  if (config.docRelease === 'esr') {
+    revisionList = await buildEsrRevisionList(config, schemaFilePath);
+  } else {
+    // For daily/beta/release: single repo, same as before.
+    const repo = `comm-${config.release}`;
+    const rev_url = getHgRevisionLogPath(repo, schemaFilePath, config.commRev);
+    const rev = jsonUtils.parse(
+      await readCachedUrl(rev_url, { temporary: config.commRev === 'tip' })
+    );
+    revisionList = [];
+    for (let i = rev.entries.length; i > 0; i--) {
+      revisionList.push({ node: rev.entries.at(i - 1).node, repo });
+    }
+  }
+
+  for (const entry of revisionList) {
+    const result = await testRevision(
+      config,
+      entry.repo,
+      fileName,
+      searchPath,
+      entry.node
+    );
     if (result) {
       const version_url = getHgFilePath(
-        `comm-${config.release}`,
+        entry.repo,
         COMM_VERSION_FILE,
-        revision
+        entry.node
       );
       return readCachedUrl(version_url).then((v) => {
         const version = v.trim();
         if (config.docRelease === 'esr') {
-          return version.replace(/[a-zA-Z]+$/, '');
+          // Check if the major version matches the ESR version (backport).
+          const major = Number(version.split('.')[0]);
+          if (major === entry.esrVersion) {
+            // Backported during ESR cycle, strip non-numeric suffix.
+            return version.replace(/[^0-9.].*/g, '');
+          }
+          // Feature rode the train, first available at this ESR.
+          return `${entry.esrVersion}.0`;
         }
         return version.split('.').at(0);
       });

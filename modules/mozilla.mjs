@@ -150,7 +150,7 @@ export async function getMozillaRevFromGeckoRevFile(release, commRev) {
 /**
  * Retrieve version of the current ESR from product-details.mozilla.org.
  *
- * @returns {string} major version of the current ESR
+ * @returns {number} major version of the current ESR
  */
 export async function getCurrentThunderbirdESR() {
   const { THUNDERBIRD_ESR, THUNDERBIRD_ESR_NEXT } = await requestJson(
@@ -162,4 +162,29 @@ export async function getCurrentThunderbirdESR() {
   const NEXT_ESR = getVersion(THUNDERBIRD_ESR_NEXT);
 
   return NEXT_ESR || ESR;
+}
+
+/**
+ * Get the sorted list of supported ESR major versions, from oldest to newest.
+ * Includes hardcoded historical ESR versions and dynamically adds the current
+ * and next ESR from product-details.mozilla.org.
+ *
+ * @returns {number[]} sorted ESR major versions (ascending)
+ */
+export async function getSupportedESRVersions() {
+  const HISTORICAL_ESR_VERSIONS = [45, 52, 60, 68, 78, 91, 102, 115, 128];
+
+  const { THUNDERBIRD_ESR, THUNDERBIRD_ESR_NEXT } = await requestJson(
+    'https://product-details.mozilla.org/1.0/thunderbird_versions.json'
+  );
+
+  const getVersion = (v) => (v ? Number(v.split('.')[0]) : null);
+  const ESR = getVersion(THUNDERBIRD_ESR);
+  const NEXT_ESR = getVersion(THUNDERBIRD_ESR_NEXT);
+
+  const versions = new Set(HISTORICAL_ESR_VERSIONS);
+  if (ESR) versions.add(ESR);
+  if (NEXT_ESR) versions.add(NEXT_ESR);
+
+  return [...versions].sort((a, b) => a - b);
 }

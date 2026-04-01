@@ -31,6 +31,7 @@ import {
   getCurrentThunderbirdESR,
   getHgFolderZipPath,
   getMozillaRevFromGeckoRevFile,
+  getSupportedESRVersions,
 } from './modules/mozilla.mjs';
 
 import {
@@ -85,6 +86,14 @@ async function main() {
       }
       config.release = `esr${esr}`;
       config.docRelease = `esr`;
+
+      // Build ESR version list and fetch commRevs for all ESR repos.
+      const esrVersions = await getSupportedESRVersions();
+      config.esrVersions = esrVersions;
+      config.esrCommRevs = {};
+      for (const v of esrVersions) {
+        config.esrCommRevs[v] = await getCommRevisionFromBuildHub(`esr${v}`);
+      }
     } else if (config.release === 'daily' || config.release === 'central') {
       config.release = `central`;
       config.docRelease = `daily`;
