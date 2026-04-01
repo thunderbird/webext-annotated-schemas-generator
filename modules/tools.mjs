@@ -181,20 +181,35 @@ export async function downloadUrl(url, filePath, retry = true) {
 }
 
 /**
- * Simple helper function to download a URL and return its content.
+ * Simple helper function to download a URL and return its content. Retries up
+ * to 2 times with a 5s delay on failure.
  *
  * @param {string} url
  * @returns {string} content
  */
-export async function readUrl(url) {
+export async function readUrl(url, retries = 2) {
   console.log(` - downloading ${url}`);
   await new Promise((resolve) => setTimeout(resolve, 2500));
-  return requestText(url);
+  try {
+    return await requestText(url);
+  } catch (ex) {
+    if (retries > 0) {
+      console.warn(` !! ${ex.message}, retrying in 5s ...`);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      return readUrl(url, retries - 1);
+    }
+    throw ex;
+  }
 }
+
+// URLs that failed during this run, not persisted to disk.
+const deadUrls = new Set();
 
 /**
  * Simple helper function to download a URL and cache its content in SCHEMA_CACHE.
  * Reading the same URL at a later time will retrieve the content from the cache.
+ * URLs that fail (after retries) are added to a temporary in-memory dead list and
+ * skipped for the remainder of this run.
  *
  * @param {string} url
  * @param {boolean} temporary - if the temporary cache is used, which is stored
@@ -204,6 +219,10 @@ export async function readUrl(url) {
  * @returns {string} content of url
  */
 export async function readCachedUrl(url, options) {
+  if (deadUrls.has(url)) {
+    throw new Error(`Skipping dead URL: ${url}`);
+  }
+
   const temporary = options?.temporary ?? false;
   const cache = temporary
     ? { type: 'temporary', file: TEMPORARY_SCHEMA_CACHE_FILE }
@@ -220,12 +239,17 @@ export async function readCachedUrl(url, options) {
   }
 
   if (!SCHEMA_CACHE[cache.type].has(url)) {
-    const rev = await readUrl(url);
-    SCHEMA_CACHE[cache.type].set(url, rev);
-    await writePrettyJSONFile(
-      cache.file,
-      Array.from(SCHEMA_CACHE[cache.type].entries())
-    );
+    try {
+      const rev = await readUrl(url);
+      SCHEMA_CACHE[cache.type].set(url, rev);
+      await writePrettyJSONFile(
+        cache.file,
+        Array.from(SCHEMA_CACHE[cache.type].entries())
+      );
+    } catch (ex) {
+      deadUrls.add(url);
+      throw ex;
+    }
   }
   return SCHEMA_CACHE[cache.type].get(url);
 }
