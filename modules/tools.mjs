@@ -247,6 +247,7 @@ export async function readCachedUrl(url, options) {
         Array.from(SCHEMA_CACHE[cache.type].entries())
       );
     } catch (ex) {
+      console.warn(` !! Marking as dead: ${url}`);
       deadUrls.add(url);
       throw ex;
     }

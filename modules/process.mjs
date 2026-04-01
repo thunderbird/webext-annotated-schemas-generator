@@ -1,7 +1,11 @@
 import bcd from '@mdn/browser-compat-data' with { type: 'json' };
 import jsonUtils from 'comment-json';
 
-import { getHgFilePath, getHgRevisionLogPath } from './mozilla.mjs';
+import {
+  getHgFilePath,
+  getHgFolderFileList,
+  getHgRevisionLogPath,
+} from './mozilla.mjs';
 import {
   validateUrl,
   readCachedUrl,
@@ -475,7 +479,7 @@ function getNestedIdOrNamespace(value, searchString) {
  *    should be searched for in the browser-compat-data repository or in annotated
  *    Thunderbird schema files.
  */
-async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
+async function addFirefoxCompatData(config, schemaInfo, value, searchPath) {
   // Allow to access nested object by specifying a path, for example:
   // entry = getNested(bcd.webextensions.api, "privacy.network")
   const getNested = (obj, path) => {
@@ -531,16 +535,28 @@ async function addFirefoxCompatData(_config, schemaInfo, value, searchPath) {
               // of the schema) then Firefox/BCD, use that instead.
               const firefox_version = compatData.support.firefox[key];
               const thunderbird_version = schemaInfo[key];
-              value.annotations.push({
-                [key]:
-                  !isNaN(parseInt(thunderbird_version, 10)) &&
-                    (firefox_version === true ||
-                      isNaN(parseInt(firefox_version, 10)) ||
-                      parseInt(thunderbird_version, 10) >
-                      parseInt(firefox_version, 10))
-                    ? thunderbird_version
-                    : firefox_version,
-              });
+              let version =
+                !isNaN(parseInt(thunderbird_version, 10)) &&
+                  (firefox_version === true ||
+                    isNaN(parseInt(firefox_version, 10)) ||
+                    parseInt(thunderbird_version, 10) >
+                    parseInt(firefox_version, 10))
+                  ? thunderbird_version
+                  : firefox_version;
+
+              // Map version_added to ESR versions.
+              if (key === 'version_added' && config.docRelease === 'esr') {
+                const major = parseInt(version, 10);
+                if (!isNaN(major)) {
+                  const esr = config.esrVersions.find((v) => v >= major);
+                  // If beyond the latest ESR, map to the latest ESR
+                  // (the feature is present in the schema, so it must
+                  // be available on the current ESR).
+                  version = `${esr || config.esrVersions.at(-1)}.0`;
+                }
+              }
+
+              value.annotations.push({ [key]: version });
             }
             break;
           }
@@ -688,16 +704,33 @@ async function testRevision(config, repo, fileName, searchPath, revision) {
 async function buildEsrRevisionList(config, schemaFilePath) {
   const revisionList = [];
   const seenRevisions = new Set();
+  const folderPath = schemaFilePath.substring(
+    0,
+    schemaFilePath.lastIndexOf('/')
+  );
+  const fileName = schemaFilePath.substring(
+    schemaFilePath.lastIndexOf('/') + 1
+  );
 
   for (const esrVersion of config.esrVersions) {
     const repo = `comm-esr${esrVersion}`;
     const commRev = config.esrCommRevs[esrVersion];
+
+    // Pre-check: skip if the schema file does not exist in this repo.
+    try {
+      const files = await getHgFolderFileList(repo, folderPath, commRev);
+      if (!files.includes(fileName)) {
+        continue;
+      }
+    } catch (ex) {
+      continue;
+    }
+
     const rev_url = getHgRevisionLogPath(repo, schemaFilePath, commRev);
     let rev;
     try {
       rev = jsonUtils.parse(await readCachedUrl(rev_url));
     } catch (ex) {
-      console.warn(` !! Could not fetch revision log from ${repo}: ${ex.message}`);
       continue;
     }
 

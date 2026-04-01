@@ -94,6 +94,24 @@ export function getHgRevisionLogPath(repository, filePath, rev) {
 }
 
 /**
+ * Get the list of file names in a folder from hg.mozilla.org using the
+ * json-manifest endpoint.
+ *
+ * @param {string} repository - The repository, for example comm-esr128.
+ * @param {string} folderPath - The path of the folder.
+ * @param {string} rev - The revision.
+ *
+ * @returns {string[]} Array of file basenames in the folder.
+ */
+export async function getHgFolderFileList(repository, folderPath, rev) {
+  const root = repository.endsWith('central') ? '' : 'releases/';
+  const url = `${HG_URL}/${root}${repository}/json-manifest/${rev}/${folderPath}`;
+  const content = await readCachedUrl(url);
+  const data = JSON.parse(content);
+  return data.files.map((f) => f.basename);
+}
+
+/**
  * Query BUILD_HUB_URL to get the latest release for a given comm release.
  *
  * @param {string} release - the requested comm release (beta, release, esrXY)
