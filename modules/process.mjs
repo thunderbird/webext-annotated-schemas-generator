@@ -396,7 +396,7 @@ export async function processSchema({
           v = v.replace(/:permission:`(.*?)`/g, '<permission>$1</permission>');
 
           // Replace URLs and single or double back ticks and rebrand.
-          v = replaceUrlsInDescription(v, config.urlReplacements, revision)
+          v = replaceUrlsInDescription(v, config.urlReplacements, revision === config.commRev.rev)
             .replace(/``(.+?)``/g, '<val>$1</val>')
             .replace(/`(.+?)`/g, '<val>$1</val>')
             .replaceAll('Firefox', 'Thunderbird');
@@ -667,7 +667,7 @@ function getApiDocSlug(config) {
  *
  * @returns {boolean}
  */
-async function testRevision(config, repo, fileName, searchPath, revision) {
+async function testRevision(config, repo, fileName, searchPath, revision, temporary) {
   const schema_url = getHgFilePath(
     repo,
     `mail/components/extensions/schemas/${fileName}`,
@@ -677,7 +677,7 @@ async function testRevision(config, repo, fileName, searchPath, revision) {
   // Read and process the schema belonging to the requested revision.
   const schema = processImports(
     jsonUtils.parse(
-      await readCachedUrl(schema_url, { temporary: revision === 'tip' })
+      await readCachedUrl(schema_url, { temporary })
     )
   );
   const searchPathClone = [...searchPath];
@@ -718,7 +718,7 @@ async function buildEsrRevisionList(config, schemaFilePath) {
 
     // Pre-check: skip if the schema file does not exist in this repo.
     try {
-      const files = await getHgFolderFileList(repo, folderPath, commRev);
+      const files = await getHgFolderFileList(repo, folderPath, commRev.rev);
       if (!files.includes(fileName)) {
         continue;
       }
@@ -726,10 +726,11 @@ async function buildEsrRevisionList(config, schemaFilePath) {
       continue;
     }
 
-    const rev_url = getHgRevisionLogPath(repo, schemaFilePath, commRev);
+    const rev_url = getHgRevisionLogPath(repo, schemaFilePath, commRev.rev);
     let rev;
     try {
-      rev = jsonUtils.parse(await readCachedUrl(rev_url));
+      // ESR revision logs are stable and can be cached persistently.
+      rev = jsonUtils.parse(await readCachedUrl(rev_url, { temporary: false }));
     } catch (ex) {
       continue;
     }
@@ -767,9 +768,9 @@ async function extractThunderbirdCompatData(config, fileName, searchPath) {
   } else {
     // For daily/beta/release: single repo, same as before.
     const repo = `comm-${config.release}`;
-    const rev_url = getHgRevisionLogPath(repo, schemaFilePath, config.commRev);
+    const rev_url = getHgRevisionLogPath(repo, schemaFilePath, config.commRev.rev);
     const rev = jsonUtils.parse(
-      await readCachedUrl(rev_url, { temporary: config.commRev === 'tip' })
+      await readCachedUrl(rev_url, { temporary: config.commRev.temporary })
     );
     revisionList = [];
     for (let i = rev.entries.length; i > 0; i--) {
@@ -777,13 +778,15 @@ async function extractThunderbirdCompatData(config, fileName, searchPath) {
     }
   }
 
+  const temporary = config.docRelease === 'esr' ? false : config.commRev.temporary;
   for (const entry of revisionList) {
     const result = await testRevision(
       config,
       entry.repo,
       fileName,
       searchPath,
-      entry.node
+      entry.node,
+      temporary
     );
     if (result) {
       const version_url = getHgFilePath(
@@ -791,7 +794,7 @@ async function extractThunderbirdCompatData(config, fileName, searchPath) {
         COMM_VERSION_FILE,
         entry.node
       );
-      return readCachedUrl(version_url).then((v) => {
+      return readCachedUrl(version_url, { temporary }).then((v) => {
         const version = v.trim();
         if (config.docRelease === 'esr') {
           // Check if the major version matches the ESR version (backport).

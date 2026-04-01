@@ -16,8 +16,8 @@
  * @property {string} manifest_version - WebExtension manifest version ("2" or "3")
  * @property {string} [tempFolder] - Temporary folder for processing
  * @property {string} [docRelease] - Documentation release version
- * @property {string} [commRev] - Comm repository revision
- * @property {string} [mozillaRev] - Mozilla repository revision
+ * @property {{rev: string, temporary: boolean}} [commRev] - Comm repository revision
+ * @property {{rev: string, temporary: boolean}} [mozillaRev] - Mozilla repository revision
  * @property {Object} [urlReplacements] - URL placeholder replacements
  * @property {SchemaInfo[]} [schemaInfos] - Array of processed schema information
  */

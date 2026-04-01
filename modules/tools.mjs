@@ -27,13 +27,13 @@ const TEMPORARY_SCHEMA_CACHE_FILE = 'temporary_schema_cache.json';
  *
  * @param {string} description
  * @param {object} urlReplacements
- * @param {string} revision - used to supress logging for all but the "tip" revision
+ * @param {boolean} logWarnings - if true, log warnings about unknown URLs
  * @returns {string} Updated descriptions where URLs have been replaced or updated.
  */
 export function replaceUrlsInDescription(
   description,
   urlReplacements,
-  revision
+  logWarnings
 ) {
   // 1. Replace existing hrefs with relative URLs
   description = description.replace(
@@ -41,7 +41,7 @@ export function replaceUrlsInDescription(
     (match, quote, relUrl, rest) => {
       const replacementUrl = urlReplacements[relUrl.trim()];
       if (!replacementUrl) {
-        if (revision === 'tip') {
+        if (logWarnings) {
           console.log(`Unknown relative URL in href: ${relUrl}`);
         }
         return match; // leave as-is if no replacement found
@@ -56,7 +56,7 @@ export function replaceUrlsInDescription(
     (match, placeholder, label) => {
       const url = urlReplacements[placeholder.trim()];
       if (!url) {
-        if (revision === 'tip') {
+        if (logWarnings) {
           console.log(`Unknown url placeholder: ${placeholder}`);
         }
         return match; // leave as-is

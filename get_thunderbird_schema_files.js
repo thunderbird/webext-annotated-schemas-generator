@@ -27,7 +27,7 @@ import {
 
 import {
   checkoutSourceFile,
-  getCommRevisionFromBuildHub,
+  getRevisionFromBuildHub,
   getCurrentThunderbirdESR,
   getHgFolderZipPath,
   getMozillaRevFromGeckoRevFile,
@@ -92,7 +92,10 @@ async function main() {
       config.esrVersions = esrVersions;
       config.esrCommRevs = {};
       for (const v of esrVersions) {
-        config.esrCommRevs[v] = 'tip';
+        config.esrCommRevs[v] = {
+          rev: await getRevisionFromBuildHub(`comm-esr${v}`),
+          temporary: false,
+        };
       }
     } else if (config.release === 'daily' || config.release === 'central') {
       config.release = `central`;
@@ -276,7 +279,7 @@ async function main() {
       config,
       value: schemaInfo.schema,
       schemaInfo,
-      revision: config.commRev,
+      revision: config.commRev.rev,
     });
   }
 
@@ -328,13 +331,18 @@ async function getMatchingRevisions(release) {
     throw new Error('Missing release parameter in getMatchingRevisions()');
   }
 
-  const commRev =
-    release === 'central' ? 'tip' : await getCommRevisionFromBuildHub(release);
+  const temporary = release === 'central';
+  const commRev = {
+    rev: await getRevisionFromBuildHub(`comm-${release}`),
+    temporary,
+  };
 
-  const mozillaRev =
-    release === 'central'
-      ? 'tip'
-      : await getMozillaRevFromGeckoRevFile(release, commRev);
+  const mozillaRev = {
+    rev: release === 'central'
+      ? await getRevisionFromBuildHub('mozilla-central')
+      : await getMozillaRevFromGeckoRevFile(release, commRev.rev, temporary),
+    temporary,
+  };
 
   return { commRev, mozillaRev };
 }
@@ -362,7 +370,7 @@ async function downloadFilesFromMozilla(release) {
     const zipFilePath = path.join(config.tempFolder, zipFileName);
     try {
       await downloadUrl(
-        getHgFolderZipPath(repository, schemaFolder.folderPath, config.commRev),
+        getHgFolderZipPath(repository, schemaFolder.folderPath, config.commRev.rev),
         zipFilePath
       );
       console.log(` - unpacking ${zipFileName} ...`);
@@ -386,7 +394,7 @@ async function downloadFilesFromMozilla(release) {
         getHgFolderZipPath(
           repository,
           schemaFolder.folderPath,
-          config.mozillaRev
+          config.mozillaRev.rev
         ),
         zipFilePath
       );
@@ -437,7 +445,7 @@ async function downloadFilesFromMozilla(release) {
       config,
       repository,
       localeFile.filePath,
-      localeFile.branch === 'comm' ? config.commRev : config.mozillaRev,
+      localeFile.branch === 'comm' ? config.commRev.rev : config.mozillaRev.rev,
       mozillaFolder
     );
   }
@@ -449,7 +457,7 @@ async function downloadFilesFromMozilla(release) {
       config,
       repository,
       COMM_VERSION_FILE,
-      config.commRev,
+      config.commRev.rev,
       mozillaFolder
     );
   }

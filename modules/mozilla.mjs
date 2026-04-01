@@ -106,22 +106,24 @@ export function getHgRevisionLogPath(repository, filePath, rev) {
 export async function getHgFolderFileList(repository, folderPath, rev) {
   const root = repository.endsWith('central') ? '' : 'releases/';
   const url = `${HG_URL}/${root}${repository}/json-manifest/${rev}/${folderPath}`;
-  const content = await readCachedUrl(url);
+  // Directory listings for stable branches can be cached persistently.
+  const content = await readCachedUrl(url, { temporary: false });
   const data = JSON.parse(content);
   return data.files.map((f) => f.basename);
 }
 
 /**
- * Query BUILD_HUB_URL to get the latest release for a given comm release.
+ * Query BUILD_HUB_URL to get the latest revision for a given source tree.
  *
- * @param {string} release - the requested comm release (beta, release, esrXY)
+ * @param {string} tree - the source tree name (e.g., "comm-central",
+ *    "comm-esr128", "mozilla-central")
  *
  * @returns {string} revision/changeset
  */
-export async function getCommRevisionFromBuildHub(release) {
+export async function getRevisionFromBuildHub(tree) {
   try {
     console.log(
-      ` - requesting latest revision for comm-${release} from ${BUILD_HUB_URL} ...`
+      ` - requesting latest revision for ${tree} from ${BUILD_HUB_URL} ...`
     );
 
     const response = await fetch(`${BUILD_HUB_URL}/api/search`, {
@@ -129,7 +131,7 @@ export async function getCommRevisionFromBuildHub(release) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         size: 1,
-        query: { term: { 'source.tree': `comm-${release}` } },
+        query: { term: { 'source.tree': tree } },
         sort: [{ 'download.date': { order: 'desc' } }],
       }),
     });
@@ -152,15 +154,13 @@ export async function getCommRevisionFromBuildHub(release) {
  * Download the GECKO_REV file from hg.mozilla.org to get the MOZILLA revision
  * matching a given COMM revision.
  */
-export async function getMozillaRevFromGeckoRevFile(release, commRev) {
+export async function getMozillaRevFromGeckoRevFile(release, commRev, temporary) {
   const gecko_rev_url = getHgFilePath(
     `comm-${release}`,
     COMM_GECKO_REV,
     commRev
   );
-  const content = await readCachedUrl(gecko_rev_url, {
-    temporary: commRev === 'tip',
-  });
+  const content = await readCachedUrl(gecko_rev_url, { temporary });
   const { GECKO_HEAD_REV } = yaml.parse(content);
   return GECKO_HEAD_REV;
 }
@@ -190,7 +190,7 @@ export async function getCurrentThunderbirdESR() {
  * @returns {number[]} sorted ESR major versions (ascending)
  */
 export async function getSupportedESRVersions() {
-  const HISTORICAL_ESR_VERSIONS = [45, 52, 60, 68, 78, 91, 102, 115, 128];
+  const HISTORICAL_ESR_VERSIONS = [60, 68, 78, 91, 102, 115, 128];
 
   const { THUNDERBIRD_ESR, THUNDERBIRD_ESR_NEXT } = await requestJson(
     'https://product-details.mozilla.org/1.0/thunderbird_versions.json'
