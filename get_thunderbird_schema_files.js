@@ -92,7 +92,7 @@ async function main() {
       config.esrVersions = esrVersions;
       config.esrCommRevs = {};
       for (const v of esrVersions) {
-        config.esrCommRevs[v] = await getCommRevisionFromBuildHub(`esr${v}`);
+        config.esrCommRevs[v] = 'tip';
       }
     } else if (config.release === 'daily' || config.release === 'central') {
       config.release = `central`;
