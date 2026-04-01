@@ -11,6 +11,10 @@ on:
         required: true
         type: string
         default: 3
+      compatData:
+        required: false
+        type: boolean
+        default: true
     secrets:
       SCHEMA_REPO_DEPLOY_KEY:
         required: true
@@ -114,7 +118,7 @@ jobs:
       - name: Run generator script for --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }}
         id: generate
         run: |
-          node get_thunderbird_schema_files.js --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }} --output=./output/schema-files/ --no-link-check
+          node get_thunderbird_schema_files.js --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }} --output=./output/schema-files/ --no-link-check ${{ inputs.compatData == false && '--no-compat-data' || '' }}
 
       - name: Delete Previous Cache
         if: ${{ steps.cache-restore.outputs.cache-hit == 'true' }}
