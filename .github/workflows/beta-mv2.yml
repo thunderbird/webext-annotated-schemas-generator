@@ -1,4 +1,4 @@
-name: Update beta-mv2 schema files (manual)
+name: Update Beta Manifest V2 schema files (manual)
 
 on:
   workflow_dispatch: # Allow manual trigger as well

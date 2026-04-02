@@ -1,4 +1,4 @@
-name: Update daily schema files (manual)
+name: Update Daily Manifest V3 schema files (manual)
 
 on:
   workflow_dispatch: # Allow manual trigger as well
