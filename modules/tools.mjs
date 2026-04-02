@@ -88,6 +88,59 @@ export function sortKeys(x) {
 }
 
 /**
+ * Fix malformed HTML tags where the closing tag is missing and a second
+ * opening tag appears instead (e.g. `<code>X<code>` → `<code>X</code>`).
+ *
+ * @param {string} str - The string to fix.
+ * @param {string[]} tags - Tag names to check.
+ * @returns {string} The fixed string.
+ */
+export function fixMalformedClosingTags(str, tags = []) {
+  for (const tag of tags) {
+    const openTag = `<${tag}>`;
+    let start = 0;
+
+    while (true) {
+      const first = str.indexOf(openTag, start);
+      if (first === -1) break;
+
+      const second = str.indexOf(openTag, first + openTag.length);
+      if (second === -1) break;
+
+      const content = str.slice(first + openTag.length, second);
+      if (!content.includes(`</${tag}>`)) {
+        str =
+          str.slice(0, second) +
+          `</${tag}>` +
+          str.slice(second + openTag.length);
+      }
+
+      start = second + 1;
+    }
+  }
+  return str;
+}
+
+/**
+ * Extract `<dl>/<dt>/<dd>` definition list pairs from a string.
+ *
+ * @param {string} str - The string to parse.
+ * @returns {Object} An object mapping keys (dt) to descriptions (dd).
+ */
+export function extractDlDescriptions(str) {
+  const result = {};
+  if (!str) return result;
+  const dlMatch = str.match(/<dl>([\s\S]*?)<\/dl>/i);
+  if (!dlMatch) return result;
+  const pairRegex = /<dt>(.*?)<\/dt>\s*<dd>(.*?)<\/dd>/gi;
+  let match;
+  while ((match = pairRegex.exec(dlMatch[1])) !== null) {
+    result[match[1].trim()] = match[2].trim();
+  }
+  return result;
+}
+
+/**
  * Simple helper function to produce pretty JSON files.
  *
  * @param {string} filePath - The path to write the JSON to.

@@ -10,6 +10,8 @@ import {
   validateUrl,
   readCachedUrl,
   replaceUrlsInDescription,
+  fixMalformedClosingTags,
+  extractDlDescriptions,
   isOdd,
 } from './tools.mjs';
 import { COMM_VERSION_FILE, API_DOC_BASE_URL } from './constants.mjs';
@@ -299,6 +301,20 @@ export async function processSchema({
       accumulator[key] = value.enums?.[key] || {};
       return accumulator;
     }, {});
+
+    // Extract <dl> enum descriptions from the parent description and merge
+    // into individual enum entries. Only set if not already present.
+    if (value.description) {
+      const dlDescriptions = extractDlDescriptions(value.description);
+      for (const [enumKey, desc] of Object.entries(dlDescriptions)) {
+        if (value.enums[enumKey] && !value.enums[enumKey].description) {
+          value.enums[enumKey].description = desc;
+        }
+      }
+      if (Object.keys(dlDescriptions).length > 0) {
+        value.description = value.description.replace(/<dl>[\s\S]*?<\/dl>/i, "").trim();
+      }
+    }
   }
 
   // Generate compat data if needed.
@@ -400,6 +416,9 @@ export async function processSchema({
             .replace(/``(.+?)``/g, '<val>$1</val>')
             .replace(/`(.+?)`/g, '<val>$1</val>')
             .replaceAll('Firefox', 'Thunderbird');
+
+          // Fix malformed HTML tags (e.g. <code>X<code> → <code>X</code>).
+          v = fixMalformedClosingTags(v, ["val", "var", "code", "permission"]);
         }
         accumulator[key] = v;
         break;
