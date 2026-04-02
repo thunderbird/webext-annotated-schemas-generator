@@ -41,6 +41,7 @@ import {
   HELP_SCREEN,
   LOCALE_FILES,
   MOZILLA_SCHEMA_FOLDERS,
+  REGISTRY_FILES,
 } from './modules/constants.mjs';
 
 import { processImports, processSchema } from './modules/process.mjs';
@@ -195,6 +196,12 @@ async function main() {
       )
     )
   );
+
+  // Use extension registries to merge schema files that contribute to the same
+  // namespace (e.g. user_scripts.json + user_scripts_content.json both define
+  // the userScripts namespace). The registries map schema files to namespace
+  // paths, so we can identify which files need merging.
+  await mergeSchemasByRegistry(config);
 
   // Filter for supported schema entries, as defined by our annotation files.
   // Thunderbird schemas are always included, Firefox schemas need to be included
@@ -448,6 +455,18 @@ async function downloadFilesFromMozilla(release) {
     );
   }
 
+  // Download extension registry files.
+  for (const registryFile of REGISTRY_FILES) {
+    const repository = `${registryFile.branch}-${release}`;
+    await checkoutSourceFile(
+      config,
+      repository,
+      registryFile.filePath,
+      registryFile.branch === 'comm' ? config.commRev.rev : config.mozillaRev.rev,
+      mozillaFolder
+    );
+  }
+
   // Download application version file from comm-* repository.
   {
     const repository = `comm-${release}`;
@@ -502,6 +521,131 @@ async function extractPermissionStrings(sourceFolder) {
     permissionStrings.push(...matchedLines);
   }
   return permissionStrings;
+}
+
+/**
+ * Resolve a chrome:// schema URL to a filesystem path relative to the source
+ * root.
+ *
+ * @param {string} chromeUrl - e.g. "chrome://extensions/content/schemas/alarms.json"
+ * @returns {string} The relative filesystem path, e.g. "toolkit/components/extensions/schemas/alarms.json"
+ */
+function resolveSchemaUrl(chromeUrl) {
+  const chromeMap = {
+    'chrome://extensions/content/': 'toolkit/components/extensions/',
+    'chrome://browser/content/': 'browser/components/extensions/',
+    'chrome://messenger/content/': 'comm/mail/components/extensions/',
+  };
+  for (const [prefix, fsPrefix] of Object.entries(chromeMap)) {
+    if (chromeUrl.startsWith(prefix)) {
+      return fsPrefix + chromeUrl.slice(prefix.length);
+    }
+  }
+  return null;
+}
+
+/**
+ * Read extension registry files and merge schema files that contribute to the
+ * same API namespace. For example, user_scripts.json and
+ * user_scripts_content.json both define the "userScripts" namespace — the
+ * content file's entries (events, functions, types) should be merged into the
+ * parent file's namespace.
+ *
+ * @param {object} config - Global configuration object.
+ */
+async function mergeSchemasByRegistry(config) {
+  // Build a map of schema filename → list of namespace paths from all registries.
+  const schemaNamespaces = new Map();
+  for (const registryFile of REGISTRY_FILES) {
+    const registryPath = path.join(
+      config.source,
+      ...registryFile.filePath.split('/')
+    );
+    let registry;
+    try {
+      registry = JSON.parse(await fs.readFile(registryPath, 'utf-8'));
+    } catch {
+      console.warn(` !! Registry file not found: ${registryFile.filePath}`);
+      continue;
+    }
+    for (const [, entry] of Object.entries(registry)) {
+      if (!entry.schema || !entry.paths?.length) continue;
+      const resolved = resolveSchemaUrl(entry.schema);
+      if (!resolved) continue;
+      const filename = path.basename(resolved);
+      const topNamespace = entry.paths[0][0];
+      if (!schemaNamespaces.has(filename)) {
+        schemaNamespaces.set(filename, new Set());
+      }
+      schemaNamespaces.get(filename).add(topNamespace);
+    }
+  }
+
+  // Find namespaces served by multiple schema files.
+  // Invert the map: namespace → [filenames]
+  const namespaceFiles = new Map();
+  for (const [filename, namespaces] of schemaNamespaces) {
+    for (const ns of namespaces) {
+      if (!namespaceFiles.has(ns)) {
+        namespaceFiles.set(ns, []);
+      }
+      namespaceFiles.get(ns).push(filename);
+    }
+  }
+
+  // Merge schemas where multiple files contribute to the same namespace.
+  for (const [namespace, filenames] of namespaceFiles) {
+    if (filenames.length <= 1) continue;
+
+    // Find the schemaInfos for these files.
+    const schemaInfos = filenames
+      .map((fn) => config.schemaInfos.find((si) => si.file.name === fn))
+      .filter(Boolean);
+    if (schemaInfos.length <= 1) continue;
+
+    // Pick the first as primary, merge others into it.
+    const primary = schemaInfos[0];
+    for (let i = 1; i < schemaInfos.length; i++) {
+      const secondary = schemaInfos[i];
+      // Find the namespace entry in the secondary schema.
+      const secondaryNs = secondary.schema.find(
+        (e) => e.namespace === namespace
+      );
+      if (!secondaryNs) continue;
+
+      // Find or create the namespace entry in the primary schema.
+      let primaryNs = primary.schema.find((e) => e.namespace === namespace);
+      if (!primaryNs) {
+        primaryNs = { namespace };
+        primary.schema.push(primaryNs);
+      }
+
+      // Merge arrays: functions, events, types.
+      for (const key of ['functions', 'events', 'types']) {
+        if (secondaryNs[key]?.length) {
+          if (!primaryNs[key]) primaryNs[key] = [];
+          primaryNs[key].push(...secondaryNs[key]);
+        }
+      }
+
+      // Merge properties.
+      if (secondaryNs.properties) {
+        if (!primaryNs.properties) primaryNs.properties = {};
+        Object.assign(primaryNs.properties, secondaryNs.properties);
+      }
+
+      // Remove the merged namespace from the secondary schema.
+      secondary.schema = secondary.schema.filter(
+        (e) => e.namespace !== namespace
+      );
+
+      // If secondary has no remaining content, remove it entirely.
+      if (secondary.schema.length === 0) {
+        const idx = config.schemaInfos.indexOf(secondary);
+        if (idx !== -1) config.schemaInfos.splice(idx, 1);
+      }
+    }
+  }
 }
 
 /**

@@ -69,3 +69,19 @@ export const MOZILLA_SCHEMA_FOLDERS = [
     zipFileNameSuffix: 'toolkit',
   },
 ];
+
+// Extension registry files that map schema files to API namespaces.
+export const REGISTRY_FILES = [
+  {
+    branch: 'mozilla',
+    filePath: 'toolkit/components/extensions/ext-toolkit.json',
+  },
+  {
+    branch: 'mozilla',
+    filePath: 'browser/components/extensions/ext-browser.json',
+  },
+  {
+    branch: 'comm',
+    filePath: 'mail/components/extensions/ext-mail.json',
+  },
+];
