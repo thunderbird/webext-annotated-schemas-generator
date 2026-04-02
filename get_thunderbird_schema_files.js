@@ -204,31 +204,6 @@ async function main() {
   // paths, so we can identify which files need merging.
   await mergeSchemasByRegistry(config);
 
-  // Create synthetic API namespace entries for manifest-only schema files.
-  // These files only have a "manifest" namespace with $extend types but no API
-  // namespace. The namespace name is derived from the registry mapping if
-  // available, otherwise from the manifest key using camelCase convention.
-  for (const schemaInfo of config.schemaInfos) {
-    const hasApiNamespace = schemaInfo.schema.some(
-      (e) => e.namespace && e.namespace !== 'manifest'
-    );
-    if (hasApiNamespace) continue;
-
-    const manifestNs = schemaInfo.schema.find(
-      (e) => e.namespace === 'manifest'
-    );
-    if (!manifestNs?.types) continue;
-
-    for (const type of manifestNs.types) {
-      if (type.$extend !== 'WebExtensionManifest') continue;
-      for (const propName of Object.keys(type.properties || {})) {
-        const apiName =
-          config.manifestKeyToApiName.get(propName) || toCamelCase(propName);
-        schemaInfo.schema.push({ namespace: apiName });
-      }
-    }
-  }
-
   // Filter for supported schema entries, as defined by our annotation files.
   // Thunderbird schemas are always included, Firefox schemas need to be included
   // manually by specifying version_added.
@@ -337,6 +312,33 @@ async function main() {
       manifestNamespace.applicationVersion = applicationVersion;
     } else {
       schemaInfo.schema.push({ namespace: 'manifest', applicationVersion });
+    }
+  }
+
+  // Create synthetic API namespace entries for manifest-only schema files.
+  // These files only have a "manifest" namespace with $extend types but no API
+  // namespace. The namespace name is derived from the registry mapping if
+  // available, otherwise from the manifest key using camelCase convention.
+  // This runs after filtering and processing to avoid the synthetic entries
+  // being removed by the filter or modified by compat data generation.
+  for (const schemaInfo of config.schemaInfos) {
+    const hasApiNamespace = schemaInfo.schema.some(
+      (e) => e.namespace && e.namespace !== 'manifest'
+    );
+    if (hasApiNamespace) continue;
+
+    const manifestNs = schemaInfo.schema.find(
+      (e) => e.namespace === 'manifest'
+    );
+    if (!manifestNs?.types) continue;
+
+    for (const type of manifestNs.types) {
+      if (type.$extend !== 'WebExtensionManifest') continue;
+      for (const propName of Object.keys(type.properties || {})) {
+        const apiName =
+          config.manifestKeyToApiName.get(propName) || toCamelCase(propName);
+        schemaInfo.schema.push({ namespace: apiName });
+      }
     }
   }
 
