@@ -141,6 +141,16 @@ export function extractDlDescriptions(str) {
 }
 
 /**
+ * Converts a snake_case string to camelCase.
+ *
+ * @param {string} str - The snake_case string to convert.
+ * @returns {string} The converted camelCase string.
+ */
+export function toCamelCase(str) {
+  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+/**
  * Simple helper function to produce pretty JSON files.
  *
  * @param {string} filePath - The path to write the JSON to.
