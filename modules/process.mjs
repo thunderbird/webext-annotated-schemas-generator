@@ -423,6 +423,9 @@ export async function processSchema({
         accumulator[key] = v;
         break;
       default:
+        if (typeof v === 'string') {
+          v = fixMalformedClosingTags(v, ["val", "var", "code", "permission"]);
+        }
         accumulator[key] = v;
     }
 
