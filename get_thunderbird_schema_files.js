@@ -20,6 +20,7 @@ import {
   parseArgs,
   replaceUrlsInDescription,
   sortKeys,
+  toCamelCase,
   validateUrl,
   writePrettyJSONFile,
   filterAnnotationEntry,
@@ -202,6 +203,31 @@ async function main() {
   // the userScripts namespace). The registries map schema files to namespace
   // paths, so we can identify which files need merging.
   await mergeSchemasByRegistry(config);
+
+  // Create synthetic API namespace entries for manifest-only schema files.
+  // These files only have a "manifest" namespace with $extend types but no API
+  // namespace. The namespace name is derived from the registry mapping if
+  // available, otherwise from the manifest key using camelCase convention.
+  for (const schemaInfo of config.schemaInfos) {
+    const hasApiNamespace = schemaInfo.schema.some(
+      (e) => e.namespace && e.namespace !== 'manifest'
+    );
+    if (hasApiNamespace) continue;
+
+    const manifestNs = schemaInfo.schema.find(
+      (e) => e.namespace === 'manifest'
+    );
+    if (!manifestNs?.types) continue;
+
+    for (const type of manifestNs.types) {
+      if (type.$extend !== 'WebExtensionManifest') continue;
+      for (const propName of Object.keys(type.properties || {})) {
+        const apiName =
+          config.manifestKeyToApiName.get(propName) || toCamelCase(propName);
+        schemaInfo.schema.push({ namespace: apiName });
+      }
+    }
+  }
 
   // Filter for supported schema entries, as defined by our annotation files.
   // Thunderbird schemas are always included, Firefox schemas need to be included
@@ -554,8 +580,10 @@ function resolveSchemaUrl(chromeUrl) {
  * @param {object} config - Global configuration object.
  */
 async function mergeSchemasByRegistry(config) {
-  // Build a map of schema filename → list of namespace paths from all registries.
+  // Build a map of schema filename → list of namespace paths from all registries,
+  // and a map of manifest key → API namespace name.
   const schemaNamespaces = new Map();
+  config.manifestKeyToApiName = new Map();
   for (const registryFile of REGISTRY_FILES) {
     const registryPath = path.join(
       config.source,
@@ -569,6 +597,14 @@ async function mergeSchemasByRegistry(config) {
       continue;
     }
     for (const [, entry] of Object.entries(registry)) {
+      // Build manifest key → API name mapping.
+      if (entry.manifest && entry.paths?.length) {
+        const apiName = entry.paths[0][0];
+        for (const mk of entry.manifest) {
+          config.manifestKeyToApiName.set(mk, apiName);
+        }
+      }
+
       if (!entry.schema || !entry.paths?.length) continue;
       const resolved = resolveSchemaUrl(entry.schema);
       if (!resolved) continue;
