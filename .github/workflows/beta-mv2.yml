@@ -1,0 +1,14 @@
+name: Update beta-mv2 schema files (manual)
+
+on:
+  workflow_dispatch: # Allow manual trigger as well
+
+jobs:
+  update-schema-files-beta-mv2:
+    if: ${{ always() }}
+    uses: ./.github/workflows/update.yml
+    with:
+      release: beta
+      manifestVersion: 2
+    secrets:
+      SCHEMA_REPO_DEPLOY_KEY: ${{ secrets.SCHEMA_REPO_DEPLOY_KEY }}
