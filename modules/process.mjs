@@ -622,10 +622,24 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
     const [namespaceName, , entryName] = searchPath.map((e) => e.ref);
     let api_documentation_url;
 
+    // Manifest entries are documented on the owning API page, not on a
+    // non-existent manifest.html. Resolve the file's sole API namespace.
+    let pageNamespace = namespaceName;
+    if (namespaceName === 'manifest') {
+      const apiNamespaces = schemaInfo.schema
+        .filter((e) => e.namespace && e.namespace !== 'manifest')
+        .map((e) => e.namespace);
+      if (apiNamespaces.length === 1) {
+        pageNamespace = apiNamespaces[0];
+      }
+      // 0 API namespaces (global manifest.json) or >1 (an unsplit
+      // multi-namespace file): no single owning page - leave unchanged.
+    }
+
     // types.Setting properties are rendered as sub-pages, not as anchors
     // on the parent page.
     if (value['$ref'] === 'types.Setting') {
-      api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.${entryName}.html`;
+      api_documentation_url = `${getApiDocSlug(config)}/${pageNamespace}.${entryName}.html`;
     } else {
       const anchorParts = [entryName];
       if (value.parameters) {
@@ -634,7 +648,7 @@ async function addThunderbirdCompatData(config, schemaInfo, value, searchPath) {
         );
       }
       const anchor = anchorParts.join('-').toLowerCase();
-      api_documentation_url = `${getApiDocSlug(config)}/${namespaceName}.html#${anchor}`;
+      api_documentation_url = `${getApiDocSlug(config)}/${pageNamespace}.html#${anchor}`;
     }
 
     if (config['no-link-check']) {
