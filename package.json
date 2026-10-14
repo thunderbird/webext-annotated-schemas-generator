@@ -28,14 +28,14 @@
   "dependencies": {
     "@mdn/browser-compat-data": "^8.1.5",
     "jsonc-parser": "^3.3.1",
-    "yaml": "^2.7.1"
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.12.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",
-    "prettier": "^3.2.5"
+    "prettier": "^3.9.10"
   },
   "engines": {
     "node": ">=20.19"
