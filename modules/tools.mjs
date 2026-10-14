@@ -92,24 +92,20 @@ export function sortKeys(x) {
 export function fixMalformedClosingTags(str, tags = []) {
   for (const tag of tags) {
     const openTag = `<${tag}>`;
-    let start = 0;
+    let first = str.indexOf(openTag);
 
-    while (true) {
-      const first = str.indexOf(openTag, start);
-      if (first === -1) break;
-
+    while (first !== -1) {
       const second = str.indexOf(openTag, first + openTag.length);
-      if (second === -1) break;
+      if (second === -1) {
+        break;
+      }
 
       const content = str.slice(first + openTag.length, second);
       if (!content.includes(`</${tag}>`)) {
-        str =
-          str.slice(0, second) +
-          `</${tag}>` +
-          str.slice(second + openTag.length);
+        str = `${str.slice(0, second)}</${tag}>${str.slice(second + openTag.length)}`;
       }
 
-      start = second + 1;
+      first = str.indexOf(openTag, second + 1);
     }
   }
   return str;
@@ -123,9 +119,13 @@ export function fixMalformedClosingTags(str, tags = []) {
  */
 export function extractDlDescriptions(str) {
   const result = {};
-  if (!str) return result;
+  if (!str) {
+    return result;
+  }
   const dlMatch = str.match(/<dl>([\s\S]*?)<\/dl>/i);
-  if (!dlMatch) return result;
+  if (!dlMatch) {
+    return result;
+  }
   const pairRegex = /<dt>(.*?)<\/dt>\s*<dd>(.*?)<\/dd>/gi;
   let match;
   while ((match = pairRegex.exec(dlMatch[1])) !== null) {

@@ -344,15 +344,21 @@ async function generate() {
     const hasApiNamespace = schemaInfo.schema.some(
       (e) => e.namespace && e.namespace !== 'manifest'
     );
-    if (hasApiNamespace) continue;
+    if (hasApiNamespace) {
+      continue;
+    }
 
     const manifestNs = schemaInfo.schema.find(
       (e) => e.namespace === 'manifest'
     );
-    if (!manifestNs?.types) continue;
+    if (!manifestNs?.types) {
+      continue;
+    }
 
     for (const type of manifestNs.types) {
-      if (type.$extend !== 'WebExtensionManifest') continue;
+      if (type.$extend !== 'WebExtensionManifest') {
+        continue;
+      }
       for (const propName of Object.keys(type.properties || {})) {
         const apiName =
           config.manifestKeyToApiName.get(propName) || toCamelCase(propName);
@@ -574,9 +580,13 @@ async function mergeSchemasByRegistry(config) {
         }
       }
 
-      if (!entry.schema || !entry.paths?.length) continue;
+      if (!entry.schema || !entry.paths?.length) {
+        continue;
+      }
       const resolved = resolveSchemaUrl(entry.schema);
-      if (!resolved) continue;
+      if (!resolved) {
+        continue;
+      }
       const filename = path.basename(resolved);
       const topNamespace = entry.paths[0][0];
       if (!schemaNamespaces.has(filename)) {
@@ -600,13 +610,17 @@ async function mergeSchemasByRegistry(config) {
 
   // Merge schemas where multiple files contribute to the same namespace.
   for (const [namespace, filenames] of namespaceFiles) {
-    if (filenames.length <= 1) continue;
+    if (filenames.length <= 1) {
+      continue;
+    }
 
     // Find the schemaInfos for these files.
     const schemaInfos = filenames
       .map((fn) => config.schemaInfos.find((si) => si.file.name === fn))
       .filter(Boolean);
-    if (schemaInfos.length <= 1) continue;
+    if (schemaInfos.length <= 1) {
+      continue;
+    }
 
     // Pick the first as primary, merge others into it.
     const primary = schemaInfos[0];
@@ -616,7 +630,9 @@ async function mergeSchemasByRegistry(config) {
       const secondaryNs = secondary.schema.find(
         (e) => e.namespace === namespace
       );
-      if (!secondaryNs) continue;
+      if (!secondaryNs) {
+        continue;
+      }
 
       // Find or create the namespace entry in the primary schema.
       let primaryNs = primary.schema.find((e) => e.namespace === namespace);
@@ -628,14 +644,18 @@ async function mergeSchemasByRegistry(config) {
       // Merge arrays: functions, events, types.
       for (const key of ['functions', 'events', 'types']) {
         if (secondaryNs[key]?.length) {
-          if (!primaryNs[key]) primaryNs[key] = [];
+          if (!primaryNs[key]) {
+            primaryNs[key] = [];
+          }
           primaryNs[key].push(...secondaryNs[key]);
         }
       }
 
       // Merge properties.
       if (secondaryNs.properties) {
-        if (!primaryNs.properties) primaryNs.properties = {};
+        if (!primaryNs.properties) {
+          primaryNs.properties = {};
+        }
         Object.assign(primaryNs.properties, secondaryNs.properties);
       }
 
@@ -647,7 +667,9 @@ async function mergeSchemasByRegistry(config) {
       // If secondary has no remaining content, remove it entirely.
       if (secondary.schema.length === 0) {
         const idx = config.schemaInfos.indexOf(secondary);
-        if (idx !== -1) config.schemaInfos.splice(idx, 1);
+        if (idx !== -1) {
+          config.schemaInfos.splice(idx, 1);
+        }
       }
     }
   }
