@@ -505,11 +505,12 @@ async function addFirefoxCompatData(config, schemaInfo, value, searchPath) {
       }
       value.annotations.push({ mdn_documentation_url: compatData.mdn_url });
     }
-    if (compatData?.support?.firefox) {
+    const firefoxSupport = getFirefoxSupport(compatData?.support?.firefox);
+    if (firefoxSupport) {
       if (!value.annotations) {
         value.annotations = [];
       }
-      for (const key of Object.keys(compatData?.support?.firefox)) {
+      for (const key of Object.keys(firefoxSupport)) {
         switch (key) {
           case 'version_added':
           case 'version_removed': {
@@ -517,7 +518,7 @@ async function addFirefoxCompatData(config, schemaInfo, value, searchPath) {
             if (!value.annotations.some((a) => Object.hasOwn(a, key))) {
               // If Thunderbird globally specifies a higher version (in the root
               // of the schema) then Firefox/BCD, use that instead.
-              const firefox_version = compatData.support.firefox[key];
+              const firefox_version = firefoxSupport[key];
               const thunderbird_version = schemaInfo[key];
               let version =
                 !isNaN(parseInt(thunderbird_version, 10)) &&
@@ -545,9 +546,9 @@ async function addFirefoxCompatData(config, schemaInfo, value, searchPath) {
             break;
           }
           case 'notes': {
-            const notes = Array.isArray(compatData.support.firefox.notes)
-              ? compatData.support.firefox.notes
-              : [compatData.support.firefox.notes];
+            const notes = Array.isArray(firefoxSupport.notes)
+              ? firefoxSupport.notes
+              : [firefoxSupport.notes];
             notes.forEach((note) => {
               // Also rebrand Firefox notes on-the-fly to Thunderbird.
               value.annotations.push({
@@ -558,10 +559,56 @@ async function addFirefoxCompatData(config, schemaInfo, value, searchPath) {
           }
         }
       }
-
-      compatData.support.firefox;
     }
   }
+}
+
+/**
+ * Get the Firefox support of a BCD feature as a single support statement.
+ *
+ * If the support changed over time, BCD uses a list of support statements,
+ * newest first. It is reduced to a single statement with
+ * - version_added of the oldest statement (when the feature became usable,
+ *   maybe with restrictions),
+ * - version_removed of the newest statement,
+ * - the notes of all statements, the notes of older statements prefixed with
+ *   their version range.
+ * Statements for an alternative name of the feature (e.g. contextMenus instead
+ * of menus), or which require a prefix or flags, are ignored.
+ *
+ * @param {object|object[]} support - The Firefox support statement(s).
+ *
+ * @returns {object|undefined} The support statement, if any.
+ */
+function getFirefoxSupport(support) {
+  if (!Array.isArray(support)) {
+    return support;
+  }
+  const statements = support.filter(
+    (s) => !s.alternative_name && !s.prefix && !s.flags
+  );
+  if (!statements.length) {
+    return undefined;
+  }
+
+  const [newest] = statements;
+  const notes = statements.flatMap((statement) => {
+    const statementNotes = [statement.notes ?? []].flat();
+    if (statement === newest || !statement.version_last) {
+      return statementNotes;
+    }
+    const range = `Firefox ${statement.version_added}–${statement.version_last}`;
+    return statementNotes.map((note) => `${range}: ${note}`);
+  });
+
+  const result = { version_added: statements.at(-1).version_added };
+  if (newest.version_removed) {
+    result.version_removed = newest.version_removed;
+  }
+  if (notes.length) {
+    result.notes = notes;
+  }
+  return result;
 }
 
 /**
