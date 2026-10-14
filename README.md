@@ -1,6 +1,6 @@
 # 🏗️ webext-annotated-schemas-generator
 
-A script to process Mozilla WebExtension API schema files. It retrieves them either from [`hg.mozilla.org`](https://hg.mozilla.org) or from a local checkout of the Mozilla Mercurial repository. The script filters out schemas for APIs not supported by Thunderbird and adds annotations useful for downstream consumers:
+A script to process Mozilla WebExtension API schema files. It retrieves them either from the git repositories of [Thunderbird](https://github.com/thunderbird/thunderbird-desktop) and [Firefox](https://github.com/mozilla-firefox/firefox) or from a local checkout. The script filters out schemas for APIs not supported by Thunderbird and adds annotations useful for downstream consumers:
 
 ```
      +--------------+        +-----+       +------------------+
@@ -57,17 +57,18 @@ node get_thunderbird_schema_files.js [options]
 |---------------------------------|-----------------------------------------------------------------------------|
 | `--manifest_version` | Manifest version of the schema files. Allowed values: `2` or `3`.           |
 | `--output`           | Path to a folder to store the processed schema files. Existing files in the folder will be deleted. |
-| `--release`          | Thunderbird release name to download schema files from `hg.mozilla.org` (e.g., `central`, `beta`, `esr`, or `esr115`). Either this or `--source` must be specified. |
+| `--release`          | Thunderbird release to download the schema files for: `daily`, `beta`, `release`, `esr` (the newest ESR) or a specific ESR like `esr153`. The files are read from the latest commit of the matching branch. Either this or `--source` must be specified. |
 | `--source`           | Path to a local checkout of a Mozilla repository (must include a `/comm` directory). Either this or `--release` must be specified. |
+| `--no-compat-data`   | Skip generation of compatibility data (doc URLs, `version_added`, BCD data). |
+| `--no-link-check`    | Skip validation of documentation URLs and always add them to the schema files. |
 
 ---
 
 ## 📄 Notes
 
-The script downloads older revisions of schema files and caches them in a `persistent_schema_cache.json` file.  
-To avoid a large initial download, you can download a pre-generated cache file from the release page:
+The `version_added` compatibility data is generated from the history of the Thunderbird schema files. The script therefore keeps a blobless clone of the [Thunderbird repository](https://github.com/thunderbird/thunderbird-desktop) in the `git-cache/` folder (about 160 MB, created in about 30 seconds on the first run). Later runs only fetch new commits. The folder can be deleted at any time, it is recreated as needed. The script requires `git`.
 
-[Download prebuilt cache](https://github.com/thunderbird/webext-schemas-generator/releases/tag/v1.0.0)
+Firefox files are read through the GitHub API. Set the `GITHUB_TOKEN` environment variable to raise its rate limit, if needed.
 
 ---
 

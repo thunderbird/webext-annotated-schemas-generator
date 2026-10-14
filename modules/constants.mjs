@@ -50,10 +50,11 @@ Options:
                                 files. All existing files in that folder will be
                                 deleted.
    --release=name             - The name of the Thunderbird release to get the
-                                schema files for. The files will be downloaded
-                                from hg.mozilla.org. Examples: "daily", "beta",
-                                "esr" or "esr115". Either --release or --source
-                                has to be specified.
+                                schema files for. The files will be read from
+                                the latest commit of the matching branch of the
+                                git repositories. Examples: "daily", "beta",
+                                "release", "esr" or "esr153". Either --release
+                                or --source has to be specified.
    --source=path              - Path to a local checkout of a mozilla repository
                                 with a matching /comm directory. Either --release
                                 or --source has to be specified.

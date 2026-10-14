@@ -22,6 +22,10 @@ on:
 jobs:
   update-schema:
     runs-on: ubuntu-latest
+    # All workflows share the schema-cache, run them one after another.
+    concurrency:
+      group: schema-cache
+      cancel-in-progress: false
     env:
       BRANCH: ${{ inputs.release }}-mv${{ inputs.manifestVersion }}
 
@@ -72,39 +76,14 @@ jobs:
           # Clone the desired branch into output/
           git clone --branch ${{ env.BRANCH }} git@github.com:thunderbird/webext-annotated-schemas.git output
 
-      - name: Restore cached persistent_schema_cache.json (if available)
-        id: cache-restore
-        uses: actions/cache@v5
+      # The git cache (a clone of the Thunderbird repository) of the last run.
+      # The generator updates it, or clones it again if it is missing or
+      # invalid.
+      - name: Restore the git cache (if available)
+        uses: actions/cache/restore@v5
         with:
-          path: persistent_schema_cache.json
+          path: git-cache
           key: schema-cache
-          restore-keys: |
-            schema-cache
-
-      - name: Check if persistent_schema_cache.json exists
-        id: check_data
-        run: |
-          if [ -f "persistent_schema_cache.json" ]; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download fallback from latest release if cache is not found
-        if: steps.check_data.outputs.found == 'false'
-        run: |
-          echo "No cached version found. Looking for persistent_schema_cache.json in a GitHub release..."
-          releases=$(curl -s https://api.github.com/repos/thunderbird/webext-annotated-schemas-generator/releases)
-
-          for url in $(echo "$releases" | jq -r '.[].assets[]? | select(.name == "persistent_schema_cache.json") | .browser_download_url'); do
-            echo "Found persistent_schema_cache.json at: $url"
-            curl -L -o persistent_schema_cache.json "$url"
-            echo "Download successful."
-            exit 0
-          done
-
-          echo "No persistent_schema_cache.json found in any release."
-          exit 1
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -117,22 +96,27 @@ jobs:
 
       - name: Run generator script for --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }}
         id: generate
+        env:
+          # Raises the limit of the GitHub API, see modules/sources.mjs.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           node get_thunderbird_schema_files.js --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }} --output=./output/schema-files/ --no-link-check ${{ inputs.compatData == false && '--no-compat-data' || '' }}
 
+      # A cache entry can not be overwritten. Always delete it, which also
+      # removes an entry of a different path (e.g. the former
+      # persistent_schema_cache.json) stored under the same key.
       - name: Delete Previous Cache
-        if: ${{ steps.cache-restore.outputs.cache-hit == 'true' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh extension install actions/gh-actions-cache
-          gh actions-cache delete "schema-cache" --confirm
+          gh cache delete schema-cache || echo "No cache to delete."
 
-      - name: Update cache with new data.json
-        uses: actions/cache@v5
+      - name: Save the git cache
+        uses: actions/cache/save@v5
         with:
-          path: persistent_schema_cache.json
+          path: git-cache
           key: schema-cache
 
       - name: Commit and push changes
