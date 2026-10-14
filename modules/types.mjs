@@ -16,10 +16,11 @@
  * @property {string} manifest_version - WebExtension manifest version ("2" or "3")
  * @property {string} [tempFolder] - Temporary folder for processing
  * @property {string} [branch] - Branch of the comm repository (e.g. "esr153", "main")
- * @property {string[]} [historyBranches] - Branches whose history is used for
- *    the compat data (for ESR releases: all ESR branches up to `branch`)
- * @property {number[]} [esrVersions] - All ESR versions up to `branch`, only
- *    for ESR releases
+ * @property {string[]} [historyRefs] - Refs whose history is used for the
+ *    compat data (for ESR releases: all ESRs up to `branch`), see
+ *    getHistoryRefs()
+ * @property {number[]} [esrVersions] - All ESR versions up to `branch`
+ *    (including historical ESRs without a branch), only for ESR releases
  * @property {string} [commRev] - Comm repository revision (git commit)
  * @property {string} [mozillaRev] - Mozilla repository revision (git commit)
  * @property {import('./sources.mjs').LocalGitSource} [commSource] - The local

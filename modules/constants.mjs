@@ -17,9 +17,16 @@ export const MOZILLA_GIT_URL = 'https://github.com/mozilla-firefox/firefox.git';
 // all older versions.
 export const OLDEST_ESR = 115;
 
-// ESR versions released before OLDEST_ESR, which no longer have a branch. Used
-// to map the version in which an element was added to the next ESR.
-export const HISTORICAL_ESR_VERSIONS = [60, 68, 78, 91, 102];
+// ESR versions released before OLDEST_ESR, which have no branch in the git
+// repository: their history (including the backports during their ESR cycle)
+// is read from the tag of their last release.
+export const HISTORICAL_ESR_TAGS = {
+  60: 'THUNDERBIRD_60_9_1_RELEASE',
+  68: 'THUNDERBIRD_68_12_1_RELEASE',
+  78: 'THUNDERBIRD_78_14_0_RELEASE',
+  91: 'THUNDERBIRD_91_13_1_RELEASE',
+  102: 'THUNDERBIRD_102_15_1_RELEASE',
+};
 
 export const COMM_SCHEMA_FOLDER = 'mail/components/extensions/schemas';
 

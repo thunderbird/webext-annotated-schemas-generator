@@ -1,7 +1,6 @@
 import bcd from '@mdn/browser-compat-data' with { type: 'json' };
 import jsonUtils from 'comment-json';
 
-import { getEsrVersion } from './branches.mjs';
 import {
   validateUrl,
   replaceUrlsInDescription,
@@ -724,24 +723,24 @@ function compareVersion(a, b) {
  * Get the version which is reported as version_added for a historical
  * revision.
  *
- * For ESR branches, a version of the ESR itself (a backport during the ESR
- * cycle) is reported as is, other versions as the next ESR including them.
- * For other branches, the major version is reported.
+ * For ESR releases, a revision whose major version is an ESR version is part
+ * of that ESR (including backports during its ESR cycle) and its version is
+ * reported without suffix. Other versions are reported as the next ESR
+ * including them. For other releases, the major version is reported.
  *
  * @param {Config} config - Global config data.
  * @param {string} version - The content of the version file of the revision,
- *    e.g. "128.2.0esr", "131.0a1" or "130.0b2".
- * @param {number|null} esrVersion - The ESR branch the revision belongs to.
+ *    e.g. "128.2.0esr", "102.3.0", "131.0a1" or "130.0b2".
  *
- * @returns {string}
+ * @returns {string} e.g. "128.2.0", "102.3.0", "140.0" or "130"
  */
-function getReportedVersion(config, version, esrVersion) {
+function getReportedVersion(config, version) {
   const major = parseInt(version, 10);
   if (!config.release.startsWith('esr')) {
     return `${major}`;
   }
-  if (major === esrVersion) {
-    // Backported during ESR cycle, strip non-numeric suffix.
+  if (config.esrVersions.includes(major)) {
+    // Strip suffixes like "esr", "a1" or "b2".
     return version.replace(/[^0-9.].*/g, '');
   }
   const esr = config.esrVersions.find((v) => v >= major);
@@ -753,8 +752,9 @@ const SCHEMA_REVISIONS_CACHE = new Map();
 
 /**
  * Get all revisions of a Thunderbird schema file in the history of the
- * processed branch (for ESR releases: of all ESR branches up to the processed
- * one), with the paths of their elements and their reported version.
+ * processed branch (for ESR releases: of all ESRs up to the processed one, see
+ * getHistoryRefs()), with the paths of their elements and their reported
+ * version.
  *
  * @param {Config} config - Global config data.
  * @param {string} fileName - Name of the Thunderbird schema file.
@@ -771,47 +771,31 @@ function getSchemaRevisions(config, fileName) {
 async function readSchemaRevisions(config, fileName) {
   const schemaFilePath = `${COMM_SCHEMA_FOLDER}/${fileName}`;
   const revisions = [];
-  const seenRevisions = new Set();
-
-  // Walk the ESR branches from oldest to newest: a revision belongs to the
-  // oldest ESR branch which includes it.
-  for (const branch of config.historyBranches) {
-    const commit = await config.commSource.resolveBranch(branch);
-    const esrVersion = getEsrVersion(branch);
-    for (const revision of await config.commSource.getFileHistory(
-      commit,
-      schemaFilePath
-    )) {
-      if (seenRevisions.has(revision)) {
-        continue;
-      }
-      seenRevisions.add(revision);
-
-      // The history includes the revision which removed the file.
-      const content = await config.commSource.readFile(
-        revision,
-        schemaFilePath
-      );
-      if (content === null) {
-        continue;
-      }
-      const schema = processImports(jsonUtils.parse(content));
-      const paths = new Set();
-      await processSchema({
-        config,
-        value: schema,
-        collectPaths: paths,
-        revision,
-      });
-      const version = (
-        await config.commSource.readFile(revision, COMM_VERSION_FILE)
-      ).trim();
-      revisions.push({
-        revision,
-        version: getReportedVersion(config, version, esrVersion),
-        paths,
-      });
+  for (const revision of await config.commSource.getFileHistory(
+    config.historyRefs,
+    schemaFilePath
+  )) {
+    // The history includes the revision which removed the file.
+    const content = await config.commSource.readFile(revision, schemaFilePath);
+    if (content === null) {
+      continue;
     }
+    const schema = processImports(jsonUtils.parse(content));
+    const paths = new Set();
+    await processSchema({
+      config,
+      value: schema,
+      collectPaths: paths,
+      revision,
+    });
+    const version = (
+      await config.commSource.readFile(revision, COMM_VERSION_FILE)
+    ).trim();
+    revisions.push({
+      revision,
+      version: getReportedVersion(config, version),
+      paths,
+    });
   }
   return revisions;
 }

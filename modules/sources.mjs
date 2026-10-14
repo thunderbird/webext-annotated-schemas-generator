@@ -187,14 +187,21 @@ export class LocalGitSource {
    *    exist
    */
   async resolveBranch(name) {
+    return this.resolveRef(`refs/heads/${name}`);
+  }
+
+  /**
+   * Resolve a ref to a commit.
+   *
+   * @param {string} ref - e.g. "refs/heads/esr153" or
+   *    "refs/tags/THUNDERBIRD_102_15_1_RELEASE".
+   * @returns {Promise<string|null>} the commit, or null if the ref does not
+   *    exist
+   */
+  async resolveRef(ref) {
     try {
       return (
-        await this.#git([
-          'rev-parse',
-          '--verify',
-          '--quiet',
-          `refs/heads/${name}^{commit}`,
-        ])
+        await this.#git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])
       ).trim();
     } catch {
       return null;
@@ -202,20 +209,49 @@ export class LocalGitSource {
   }
 
   /**
-   * Get the commits in the history of the given commit which modified the
-   * given file, newest first. The full history is used: by default, git only
-   * follows one parent of a merge, which hides changes which reached the branch
+   * Fetch the given refs, if they are not yet available locally. Used for refs
+   * which are not updated by open() and which never change, e.g. tags.
+   *
+   * @param {string[]} refs - e.g. ["refs/tags/THUNDERBIRD_102_15_1_RELEASE"]
+   */
+  async fetchRefs(refs) {
+    const missing = [];
+    for (const ref of refs) {
+      if (!(await this.resolveRef(ref))) {
+        missing.push(ref);
+      }
+    }
+    if (!missing.length) {
+      return;
+    }
+    console.log(` - fetching ${missing.length} refs into ${this.dir} ...`);
+    await this.#git([
+      'fetch',
+      '--quiet',
+      '--no-tags',
+      '--filter=blob:none',
+      'origin',
+      ...missing.map((ref) => `${ref}:${ref}`),
+    ]);
+    await this.#writeCommitGraph();
+  }
+
+  /**
+   * Get the commits in the history of the given refs which modified the given
+   * file, newest first. The full history is used: by default, git only follows
+   * one parent of a merge, which hides changes which reached the branch
    * through the other parent (e.g. uplifts to beta merged into release).
    *
-   * @param {string} commit
+   * @param {string[]} refs - Refs or commits, the union of their histories is
+   *    returned.
    * @param {string} filePath - Path of the file inside the repository.
    * @returns {Promise<string[]>}
    */
-  async getFileHistory(commit, filePath) {
+  async getFileHistory(refs, filePath) {
     const log = await this.#git([
       'rev-list',
       '--full-history',
-      commit,
+      ...refs,
       '--',
       filePath,
     ]);
@@ -244,18 +280,18 @@ export class LocalGitSource {
 
   /**
    * Fetch all revisions of the given files in the full history of the given
-   * commits, which are not yet available locally, with a single request.
+   * refs, which are not yet available locally, with a single request.
    *
-   * @param {string[]} commits
+   * @param {string[]} refs - Refs or commits.
    * @param {string[]} paths - Paths of files or folders.
    */
-  async prefetchHistory(commits, paths) {
+  async prefetchHistory(refs, paths) {
     const objects = await this.#git([
       'rev-list',
       '--objects',
       '--missing=print',
       '--full-history',
-      ...commits,
+      ...refs,
       '--',
       ...paths,
     ]);

@@ -30,8 +30,8 @@ import { getMozillaRefFromGeckoRevFile } from './modules/mozilla.mjs';
 import { LocalGitSource } from './modules/sources.mjs';
 
 import {
-  getEsrHistoryBranches,
   getEsrVersions,
+  getHistoryRefs,
   getReleaseBranch,
 } from './modules/branches.mjs';
 
@@ -110,14 +110,8 @@ async function generate() {
     config.release = config.branch;
   }
 
-  // The branches whose history is used for the compat data.
-  config.historyBranches = [config.branch];
   if (config.release.startsWith('esr')) {
-    config.historyBranches = await getEsrHistoryBranches(
-      config.commSource,
-      config.branch
-    );
-    config.esrVersions = getEsrVersions(config.historyBranches);
+    config.esrVersions = await getEsrVersions(config.commSource, config.branch);
   }
 
   config.commRev = await config.commSource.resolveBranch(config.branch);
@@ -136,12 +130,15 @@ async function generate() {
 
   if (!config['no-compat-data']) {
     console.log(` Downloading the history of the schema files ...`);
-    await config.commSource.prefetchHistory(
-      await Promise.all(
-        config.historyBranches.map((b) => config.commSource.resolveBranch(b))
-      ),
-      [COMM_SCHEMA_FOLDER, COMM_VERSION_FILE]
-    );
+    // The refs whose history is used for the compat data. Refs which are not
+    // updated by LocalGitSource.open() (the tags of historical ESRs) are
+    // fetched once.
+    config.historyRefs = await getHistoryRefs(config.commSource, config.branch);
+    await config.commSource.fetchRefs(config.historyRefs);
+    await config.commSource.prefetchHistory(config.historyRefs, [
+      COMM_SCHEMA_FOLDER,
+      COMM_VERSION_FILE,
+    ]);
   }
 
   // Setup output directory.

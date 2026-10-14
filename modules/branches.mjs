@@ -1,4 +1,4 @@
-import { HISTORICAL_ESR_VERSIONS, OLDEST_ESR } from './constants.mjs';
+import { HISTORICAL_ESR_TAGS, OLDEST_ESR } from './constants.mjs';
 
 // Based on the branch handling of the policy-templates generator:
 // https://github.com/thunderbird/policy-templates/blob/main/generator/modules/branches.mjs
@@ -54,25 +54,49 @@ export async function getReleaseBranch(source, release) {
 }
 
 /**
- * Get the ESR branches whose history is used for the compat data of an ESR
- * branch: all ESR branches from OLDEST_ESR up to the given branch.
+ * Get the ESR branches from OLDEST_ESR up to the given ESR branch.
  *
  * @param {LocalGitSource} source
  * @param {string} branch - e.g. "esr153"
  * @returns {Promise<string[]>} e.g. ["esr115", "esr128", "esr140", "esr153"]
  */
-export async function getEsrHistoryBranches(source, branch) {
+async function getEsrBranchesUpTo(source, branch) {
   const esr = getEsrVersion(branch);
   return (await getEsrBranches(source)).filter((b) => getEsrVersion(b) <= esr);
+}
+
+/**
+ * Get the refs whose history is used for the compat data of a branch. For an
+ * ESR branch, these are all ESRs up to it: the tags of the historical ESRs
+ * (see HISTORICAL_ESR_TAGS) and the ESR branches. Otherwise, the branch
+ * itself.
+ *
+ * @param {LocalGitSource} source
+ * @param {string} branch - e.g. "esr153" or "beta"
+ * @returns {Promise<string[]>} e.g. ["refs/tags/THUNDERBIRD_60_9_1_RELEASE",
+ *    ..., "refs/heads/esr115", ..., "refs/heads/esr153"]
+ */
+export async function getHistoryRefs(source, branch) {
+  if (!getEsrVersion(branch)) {
+    return [`refs/heads/${branch}`];
+  }
+  return [
+    ...Object.values(HISTORICAL_ESR_TAGS).map((tag) => `refs/tags/${tag}`),
+    ...(await getEsrBranchesUpTo(source, branch)).map((b) => `refs/heads/${b}`),
+  ];
 }
 
 /**
  * Get all ESR versions up to the given ESR branch, including the historical
  * ESR versions without a branch.
  *
- * @param {string[]} esrBranches - see getEsrHistoryBranches()
- * @returns {number[]} e.g. [60, 68, 78, 91, 102, 115, 128, 140, 153]
+ * @param {LocalGitSource} source
+ * @param {string} branch - e.g. "esr153"
+ * @returns {Promise<number[]>} e.g. [60, 68, 78, 91, 102, 115, 128, 140, 153]
  */
-export function getEsrVersions(esrBranches) {
-  return [...HISTORICAL_ESR_VERSIONS, ...esrBranches.map(getEsrVersion)];
+export async function getEsrVersions(source, branch) {
+  return [
+    ...Object.keys(HISTORICAL_ESR_TAGS).map(Number),
+    ...(await getEsrBranchesUpTo(source, branch)).map(getEsrVersion),
+  ];
 }
