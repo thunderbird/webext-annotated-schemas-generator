@@ -16,6 +16,7 @@ import path from 'node:path';
 import {
   getJsonFiles,
   parseArgs,
+  removeObsoleteCacheFiles,
   replaceUrlsInDescription,
   sortKeys,
   toCamelCase,
@@ -84,6 +85,7 @@ async function main() {
 
   // The history of the Thunderbird repository is needed for the compat data,
   // it is cloned (or updated) into a local cache.
+  await removeObsoleteCacheFiles();
   config.commSource = await LocalGitSource.open(COMM_GIT_URL, GIT_CACHE_DIR);
   config.mozillaSource = new GitHubSource(MOZILLA_GITHUB_REPOSITORY);
   try {

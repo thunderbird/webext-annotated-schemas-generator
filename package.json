@@ -28,9 +28,7 @@
   },
   "dependencies": {
     "@mdn/browser-compat-data": "^6.0.22",
-    "bent": "^7.3.12",
     "comment-json": "^4.2.4",
-    "extract-zip": "^2.0.1",
     "yaml": "^2.7.1"
   },
   "devDependencies": {

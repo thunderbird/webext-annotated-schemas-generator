@@ -1,22 +1,16 @@
-import bent from 'bent';
 import fs from 'node:fs/promises';
-import https from 'https';
-import jsonUtils from 'comment-json';
 import path from 'node:path';
-
-import { createWriteStream } from 'node:fs';
 
 /**
  * @typedef {import('./types.mjs').SchemaFile} SchemaFile
  */
 
-const requestText = bent('GET', 'string', 200);
-
-// The temporary cache is still written to disc, but can be easily cleared
-// without interfering with the persistent cache.
-const SCHEMA_CACHE = {};
-const PERSISTENT_SCHEMA_CACHE_FILE = 'persistent_schema_cache.json';
-const TEMPORARY_SCHEMA_CACHE_FILE = 'temporary_schema_cache.json';
+// Cache files of the former mercurial based implementation, which are removed
+// if found.
+const OBSOLETE_CACHE_FILES = [
+  'persistent_schema_cache.json',
+  'temporary_schema_cache.json',
+];
 
 /**
  * Updates URLs in a description string.
@@ -216,6 +210,21 @@ export async function writePrettyJSONFile(filePath, json) {
 }
 
 /**
+ * Remove the cache files of the former mercurial based implementation, the
+ * git cache replaces them.
+ */
+export async function removeObsoleteCacheFiles() {
+  for (const file of OBSOLETE_CACHE_FILES) {
+    try {
+      await fs.rm(file);
+      console.log(` - removed obsolete cache file ${file}`);
+    } catch {
+      // The file does not exist.
+    }
+  }
+}
+
+/**
  * Simple helper function to check if a URL is valid.
  *
  * @param {string} url
@@ -245,127 +254,6 @@ export async function validateUrl(url, placeholder = '') {
     );
     return false;
   }
-}
-
-/**
- * Simple helper function to download a URL and store its content on the user's
- * disc.
- *
- * @param {string} url - The URL to download.
- * @param {string} filePath - The path to write the downloaded file to.
- */
-export async function downloadUrl(url, filePath, retry = true) {
-  console.log(` - downloading ${url} ...`);
-  await new Promise((resolve) => setTimeout(resolve, 2500));
-  try {
-    await new Promise((resolve, reject) => {
-      const file = createWriteStream(filePath);
-      https
-        .get(url, (response) => {
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            file.close();
-            reject(
-              new Error(
-                `Download failed with HTTP ${response.statusCode} for ${url}`
-              )
-            );
-            return;
-          }
-          response.pipe(file);
-          file.on('finish', () => {
-            file.close(() => {
-              resolve(filePath);
-            });
-          });
-        })
-        .on('error', (err) => {
-          reject(err);
-        });
-    });
-  } catch (ex) {
-    if (retry) {
-      console.warn(` !! ${ex.message}, retrying in 5s ...`);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-      return downloadUrl(url, filePath, false);
-    }
-    throw ex;
-  }
-  return filePath;
-}
-
-/**
- * Simple helper function to download a URL and return its content. Retries up
- * to 2 times with a 5s delay on failure.
- *
- * @param {string} url
- * @returns {string} content
- */
-export async function readUrl(url, retries = 2) {
-  console.log(` - downloading ${url}`);
-  await new Promise((resolve) => setTimeout(resolve, 2500));
-  try {
-    return await requestText(url);
-  } catch (ex) {
-    if (retries > 0) {
-      console.warn(` !! ${ex.message}, retrying in 5s ...`);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-      return readUrl(url, retries - 1);
-    }
-    throw ex;
-  }
-}
-
-// URLs that failed during this run, not persisted to disk.
-const deadUrls = new Set();
-
-/**
- * Simple helper function to download a URL and cache its content in SCHEMA_CACHE.
- * Reading the same URL at a later time will retrieve the content from the cache.
- * URLs that fail (after retries) are added to a temporary in-memory dead list and
- * skipped for the remainder of this run.
- *
- * @param {string} url
- * @param {boolean} temporary - if the temporary cache is used, which is stored
- *    in a separate file and can be easily cleared independently of the persistent
- *    cache
- *
- * @returns {string} content of url
- */
-export async function readCachedUrl(url, options) {
-  if (deadUrls.has(url)) {
-    throw new Error(`Skipping dead URL: ${url}`);
-  }
-
-  const temporary = options?.temporary ?? false;
-  const cache = temporary
-    ? { type: 'temporary', file: TEMPORARY_SCHEMA_CACHE_FILE }
-    : { type: 'persistent', file: PERSISTENT_SCHEMA_CACHE_FILE };
-
-  if (!SCHEMA_CACHE[cache.type]) {
-    try {
-      const data = await fs.readFile(cache.file, 'utf-8');
-      SCHEMA_CACHE[cache.type] = new Map(jsonUtils.parse(data));
-    } catch (ex) {
-      // Cache file does not yet exist.
-      SCHEMA_CACHE[cache.type] = new Map();
-    }
-  }
-
-  if (!SCHEMA_CACHE[cache.type].has(url)) {
-    try {
-      const rev = await readUrl(url);
-      SCHEMA_CACHE[cache.type].set(url, rev);
-      await writePrettyJSONFile(
-        cache.file,
-        Array.from(SCHEMA_CACHE[cache.type].entries())
-      );
-    } catch (ex) {
-      console.warn(` !! Marking as dead: ${url}`);
-      deadUrls.add(url);
-      throw ex;
-    }
-  }
-  return SCHEMA_CACHE[cache.type].get(url);
 }
 
 /**

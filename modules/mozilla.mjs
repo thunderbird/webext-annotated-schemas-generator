@@ -1,156 +1,11 @@
-import bent from 'bent';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import yaml from 'yaml';
 
-import { HG_URL, BUILD_HUB_URL, COMM_GECKO_REV } from './constants.mjs';
-import { downloadUrl, readCachedUrl } from './tools.mjs';
+import { COMM_GECKO_REV } from './constants.mjs';
 
 /**
- * @typedef {import('./types.mjs').Config} Config
  * @typedef {import('./sources.mjs').LocalGitSource} LocalGitSource
  * @typedef {import('./sources.mjs').GitHubSource} GitHubSource
  */
-
-const requestJson = bent('GET', 'json', 200);
-
-/**
- * Download a file from hg.mozilla.org and add it to the local checkout folder.
- *
- * @param {Config} config - Global configuration object
- * @param {string} repository - The repository, for example comm-central,
- *    comm-beta, comm-esr115, ...
- * @param {string} filePath - The path of the file.
- * @param {string} rev - The revision of the file.
- * @param {string} checkoutFolder - The local mozilla checkout folder
- */
-export async function checkoutSourceFile(
-  config,
-  repository,
-  filePath,
-  rev,
-  checkoutFolder
-) {
-  const hgFilePath = getHgFilePath(repository, filePath, rev);
-  const parts = filePath.split('/');
-  // Files from comm-* repositories are inside the comm/ folder in the local
-  // source directory.
-  if (repository.startsWith('comm')) {
-    parts.unshift('comm');
-  }
-  await fs.mkdir(
-    path.join(config.tempFolder, checkoutFolder, ...parts.slice(0, -1)),
-    { recursive: true }
-  );
-  return downloadUrl(
-    hgFilePath,
-    path.join(config.tempFolder, checkoutFolder, ...parts)
-  );
-}
-
-/**
- * Get URL to download a folder as a zip file from hg.mozilla.org.
- *
- * @param {string} repository - The repository, for example comm-central,
- *    comm-beta, comm-esr115, ...
- * @param {string} folderPath - The path of the folder.
- * @param {string} revision - The requested revision.
- *
- * @returns {string} URL pointing to zip download of the folder from hg.mozilla.org.
- */
-export function getHgFolderZipPath(repository, folderPath, revision) {
-  const root = repository.endsWith('central') ? '' : 'releases/';
-  const rv = `${HG_URL}/${root}${repository}/archive/${revision}.zip/${folderPath}`;
-  return rv;
-}
-
-/**
- * Get URL to download a raw file from hg.mozilla.org.
- *
- * @param {string} repository - The repository, for example comm-central,
- *    comm-beta, comm-esr115, ...
- * @param {string} filePath - The path of the file.
- * @param {string} rev - The revision of the file.
- *
- * @returns {string} URL pointing to the raw file download from hg.mozilla.org.
- */
-export function getHgFilePath(repository, filePath, rev) {
-  const root = repository.endsWith('central') ? '' : 'releases/';
-  return `${HG_URL}/${root}${repository}/raw-file/${rev}/${filePath}`;
-}
-
-/**
- * Get URL to download the revision log for a file from hg.mozilla.org. At most
- * 125 revision entries are retrieved.
- *
- * @param {string} repository - The repository, for example comm-central,
- *    comm-beta, comm-esr115, ...
- * @param {string} filePath - The path of the file.
- * @param {string} rev - The revision of the file. (TODO)
- *
- * @returns {string} URL pointing to the raw file download from hg.mozilla.org.
- */
-export function getHgRevisionLogPath(repository, filePath, rev) {
-  const root = repository.endsWith('central') ? '' : 'releases/';
-  return `${HG_URL}/${root}${repository}/json-log/${rev}/${filePath}?revcount=125`;
-}
-
-/**
- * Get the list of file names in a folder from hg.mozilla.org using the
- * json-manifest endpoint.
- *
- * @param {string} repository - The repository, for example comm-esr128.
- * @param {string} folderPath - The path of the folder.
- * @param {string} rev - The revision.
- *
- * @returns {string[]} Array of file basenames in the folder.
- */
-export async function getHgFolderFileList(repository, folderPath, rev) {
-  const root = repository.endsWith('central') ? '' : 'releases/';
-  const url = `${HG_URL}/${root}${repository}/json-manifest/${rev}/${folderPath}`;
-  // Directory listings for stable branches can be cached persistently.
-  const content = await readCachedUrl(url, { temporary: false });
-  const data = JSON.parse(content);
-  return data.files.map((f) => f.basename);
-}
-
-/**
- * Query BUILD_HUB_URL to get the latest revision for a given source tree.
- *
- * @param {string} tree - the source tree name (e.g., "comm-central",
- *    "comm-esr128", "mozilla-central")
- *
- * @returns {string} revision/changeset
- */
-export async function getRevisionFromBuildHub(tree) {
-  try {
-    console.log(
-      ` - requesting latest revision for ${tree} from ${BUILD_HUB_URL} ...`
-    );
-
-    const response = await fetch(`${BUILD_HUB_URL}/api/search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        size: 1,
-        query: { term: { 'source.tree': tree } },
-        sort: [{ 'download.date': { order: 'desc' } }],
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.hits.hits[0]._source.source.revision;
-  } catch (err) {
-    console.error(err);
-    throw new Error(
-      `Failed to retrieve latest revision from ${BUILD_HUB_URL}: ${err}`
-    );
-  }
-}
 
 /**
  * Read the GECKO_REV file of a COMM revision to get the matching MOZILLA
@@ -173,7 +28,9 @@ export async function getMozillaRevFromGeckoRevFile(
   // which does not exist in the git repository.
   const { GECKO_HEAD_REF } = yaml.parse(content ?? '') ?? {};
   if (!GECKO_HEAD_REF) {
-    throw new Error(`No GECKO_HEAD_REF found in ${COMM_GECKO_REV} of ${commRev}`);
+    throw new Error(
+      `No GECKO_HEAD_REF found in ${COMM_GECKO_REV} of ${commRev}`
+    );
   }
   const ref = GECKO_HEAD_REF === 'default' ? 'main' : GECKO_HEAD_REF;
   const rev = await mozillaSource.resolveRef(ref);
@@ -181,46 +38,4 @@ export async function getMozillaRevFromGeckoRevFile(
     throw new Error(`${ref} not found in ${mozillaSource.description}`);
   }
   return rev;
-}
-
-/**
- * Retrieve version of the current ESR from product-details.mozilla.org.
- *
- * @returns {number} major version of the current ESR
- */
-export async function getCurrentThunderbirdESR() {
-  const { THUNDERBIRD_ESR, THUNDERBIRD_ESR_NEXT } = await requestJson(
-    'https://product-details.mozilla.org/1.0/thunderbird_versions.json'
-  );
-
-  const getVersion = (v) => (v ? Number(v.split('.')[0]) : null);
-  const ESR = getVersion(THUNDERBIRD_ESR);
-  const NEXT_ESR = getVersion(THUNDERBIRD_ESR_NEXT);
-
-  return NEXT_ESR || ESR;
-}
-
-/**
- * Get the sorted list of supported ESR major versions, from oldest to newest.
- * Includes hardcoded historical ESR versions and dynamically adds the current
- * and next ESR from product-details.mozilla.org.
- *
- * @returns {number[]} sorted ESR major versions (ascending)
- */
-export async function getSupportedESRVersions() {
-  const HISTORICAL_ESR_VERSIONS = [60, 68, 78, 91, 102, 115, 128];
-
-  const { THUNDERBIRD_ESR, THUNDERBIRD_ESR_NEXT } = await requestJson(
-    'https://product-details.mozilla.org/1.0/thunderbird_versions.json'
-  );
-
-  const getVersion = (v) => (v ? Number(v.split('.')[0]) : null);
-  const ESR = getVersion(THUNDERBIRD_ESR);
-  const NEXT_ESR = getVersion(THUNDERBIRD_ESR_NEXT);
-
-  const versions = new Set(HISTORICAL_ESR_VERSIONS);
-  if (ESR) versions.add(ESR);
-  if (NEXT_ESR) versions.add(NEXT_ESR);
-
-  return [...versions].sort((a, b) => a - b);
 }

@@ -1,7 +1,5 @@
 export const API_DOC_BASE_URL = 'https://webextension-api.thunderbird.net/en';
 
-export const BUILD_HUB_URL = 'https://buildhub.moz.tools';
-
 export const COMM_GECKO_REV = '.gecko_rev.yml';
 
 // The Thunderbird repository. It is cloned (blobless) into GIT_CACHE_DIR, as
@@ -30,14 +28,8 @@ export const HISTORICAL_ESR_VERSIONS = [60, 68, 78, 91, 102];
 export const COMM_SCHEMA_FOLDER = 'mail/components/extensions/schemas';
 
 export const COMM_SCHEMA_FOLDERS = [
-  {
-    folderPath: COMM_SCHEMA_FOLDER,
-    zipFileNameSuffix: 'mail',
-  },
-  {
-    folderPath: 'mail/components/extensions/annotations',
-    zipFileNameSuffix: 'mail-annotations',
-  },
+  { folderPath: COMM_SCHEMA_FOLDER },
+  { folderPath: 'mail/components/extensions/annotations' },
 ];
 
 export const COMM_URL_PLACEHOLDER_FILE =
@@ -71,8 +63,6 @@ Options:
                                 add them to the schema files.
 `;
 
-export const HG_URL = 'https://hg-edge.mozilla.org';
-
 export const LOCALE_FILES = [
   {
     branch: 'mozilla',
@@ -85,14 +75,8 @@ export const LOCALE_FILES = [
 ];
 
 export const MOZILLA_SCHEMA_FOLDERS = [
-  {
-    folderPath: 'browser/components/extensions/schemas',
-    zipFileNameSuffix: 'browser',
-  },
-  {
-    folderPath: 'toolkit/components/extensions/schemas',
-    zipFileNameSuffix: 'toolkit',
-  },
+  { folderPath: 'browser/components/extensions/schemas' },
+  { folderPath: 'toolkit/components/extensions/schemas' },
 ];
 
 // Extension registry files that map schema files to API namespaces.

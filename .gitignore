@@ -2,8 +2,6 @@ node_modules
 
 # Cache files
 git-cache/
-persistent_schema_cache.json
-temporary_schema_cache.json
 
 # Build outputs
 output/
