@@ -9,13 +9,9 @@ export const COMM_GIT_URL =
 
 export const GIT_CACHE_DIR = 'git-cache/thunderbird-desktop.git';
 
-// The Firefox repository. Only a single revision is needed, which is read
-// through the GitHub API.
-export const MOZILLA_GITHUB_REPOSITORY = 'mozilla-firefox/firefox';
-
-export const GITHUB_API_URL = 'https://api.github.com';
-
-export const GITHUB_RAW_URL = 'https://raw.githubusercontent.com';
+// The Firefox repository. Only a single revision is needed, which is fetched
+// into the temp folder.
+export const MOZILLA_GIT_URL = 'https://github.com/mozilla-firefox/firefox.git';
 
 // The oldest ESR branch available in the git repository. Its history includes
 // all older versions.

@@ -145,56 +145,6 @@ export function toCamelCase(str) {
 }
 
 /**
- * fetch based request variant with retries and a hard timeout on client side.
- *
- * @param {string} url - The URL to GET.
- * @param {object} [headers] - Additional request headers.
- *
- * @returns {Promise<?string>} text content, or null if the URL does not exist
- */
-export async function request(url, headers = {}) {
-  console.log(` - downloading ${url}`);
-  let lastError;
-  for (let i = 0; i < 5; i++) {
-    if (i > 0) {
-      console.warn(` !! ${lastError.message}, retrying in 5s ...`);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-    }
-    try {
-      const response = await fetch(url, {
-        headers,
-        signal: AbortSignal.timeout(15000),
-      });
-      if (response.status === 404) {
-        return null;
-      }
-      if (response.ok) {
-        return await response.text();
-      }
-      lastError = new Error(
-        `Download failed with HTTP ${response.status} for ${url}`
-      );
-      lastError.status = response.status;
-      const rateLimited = [403, 429].includes(response.status);
-      if (rateLimited && !headers.Authorization) {
-        lastError.message +=
-          ' (the API rate limit may be exceeded, set GITHUB_TOKEN)';
-      }
-      // Other client errors will not go away by retrying.
-      if (response.status < 500 && !rateLimited) {
-        throw lastError;
-      }
-    } catch (ex) {
-      if (ex === lastError) {
-        throw ex;
-      }
-      lastError = new Error(`Download failed: ${ex.message} for ${url}`);
-    }
-  }
-  throw lastError;
-}
-
-/**
  * Simple helper function to produce pretty JSON files.
  *
  * @param {string} filePath - The path to write the JSON to.

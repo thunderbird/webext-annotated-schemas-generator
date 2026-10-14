@@ -25,9 +25,9 @@ import {
   filterAnnotationEntry,
 } from './modules/tools.mjs';
 
-import { getMozillaRevFromGeckoRevFile } from './modules/mozilla.mjs';
+import { getMozillaRefFromGeckoRevFile } from './modules/mozilla.mjs';
 
-import { GitHubSource, LocalGitSource } from './modules/sources.mjs';
+import { LocalGitSource } from './modules/sources.mjs';
 
 import {
   getEsrHistoryBranches,
@@ -44,7 +44,7 @@ import {
   GIT_CACHE_DIR,
   HELP_SCREEN,
   LOCALE_FILES,
-  MOZILLA_GITHUB_REPOSITORY,
+  MOZILLA_GIT_URL,
   MOZILLA_SCHEMA_FOLDERS,
   REGISTRY_FILES,
 } from './modules/constants.mjs';
@@ -87,7 +87,6 @@ async function main() {
   // it is cloned (or updated) into a local cache.
   await removeObsoleteCacheFiles();
   config.commSource = await LocalGitSource.open(COMM_GIT_URL, GIT_CACHE_DIR);
-  config.mozillaSource = new GitHubSource(MOZILLA_GITHUB_REPOSITORY);
   try {
     await generate();
   } finally {
@@ -121,8 +120,13 @@ async function generate() {
     config.esrVersions = getEsrVersions(config.historyBranches);
   }
 
-  // Add commRev and mozillaRev properties to the config object.
-  Object.assign(config, await getMatchingRevisions(config.branch));
+  config.commRev = await config.commSource.resolveBranch(config.branch);
+  if (!config.commRev) {
+    throw new Error(
+      `Branch ${config.branch} not found in ${config.commSource.description}`
+    );
+  }
+  console.log(` - comm ${config.branch}: ${config.commRev}`);
 
   // Download schema files, if requested.
   if (!config.source) {
@@ -380,42 +384,29 @@ async function generate() {
 // -----------------------------------------------------------------------------
 
 /**
- * Get the revisions of the COMM and MOZILLA repositories for a branch.
+ * Copy files and folders of a revision of a repository into a local folder.
  *
- * @param {string} branch - The branch of the COMM repository, e.g. "esr153".
- *
- * @returns {Promise<{commRev: string, mozillaRev: string}>}
+ * @param {LocalGitSource} source - The repository.
+ * @param {string} commit - The revision.
+ * @param {string[]} folders - Paths of folders to copy (including sub folders).
+ * @param {string[]} files - Paths of single files to copy.
+ * @param {string} targetFolder - The local folder.
  */
-async function getMatchingRevisions(branch) {
-  const commRev = await config.commSource.resolveBranch(branch);
-  if (!commRev) {
-    throw new Error(
-      `Branch ${branch} not found in ${config.commSource.description}`
-    );
+async function copyFiles(source, commit, folders, files, targetFolder) {
+  await source.prefetchFiles(commit, [...folders, ...files]);
+  const filePaths = [...files];
+  for (const folder of folders) {
+    filePaths.push(...(await source.listFiles(commit, folder)));
   }
-  const mozillaRev = await getMozillaRevFromGeckoRevFile(
-    config.commSource,
-    config.mozillaSource,
-    commRev
-  );
-  console.log(` - ${branch}: comm ${commRev}, mozilla ${mozillaRev}`);
-  return { commRev, mozillaRev };
-}
-
-/**
- * Write a file into the temp directory with the downloaded files.
- *
- * @param {string} sourceFolder - The temp directory.
- * @param {string} filePath - The path of the file inside the source directory.
- * @param {?string} content - The content of the file.
- */
-async function writeSourceFile(sourceFolder, filePath, content) {
-  if (content === null) {
-    throw new Error(`Download of ${filePath} did not succeed!`);
+  for (const filePath of filePaths) {
+    const content = await source.readFile(commit, filePath);
+    if (content === null) {
+      throw new Error(`Download of ${filePath} did not succeed!`);
+    }
+    const targetPath = path.join(targetFolder, ...filePath.split('/'));
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, content, 'utf-8');
   }
-  const targetPath = path.join(sourceFolder, ...filePath.split('/'));
-  await fs.mkdir(path.dirname(targetPath), { recursive: true });
-  await fs.writeFile(targetPath, content, 'utf-8');
 }
 
 /**
@@ -433,51 +424,41 @@ async function downloadFilesFromMozilla() {
     ...REGISTRY_FILES,
     { branch: 'comm', filePath: COMM_VERSION_FILE },
   ];
+  const getSingleFiles = (branch) =>
+    singleFiles.filter((f) => f.branch === branch).map((f) => f.filePath);
 
-  // Download COMM files from the local clone.
-  await config.commSource.prefetchFiles(config.commRev, [
-    ...COMM_SCHEMA_FOLDERS.map((f) => f.folderPath),
-    ...singleFiles.filter((f) => f.branch === 'comm').map((f) => f.filePath),
-  ]);
-  const commFiles = [];
-  for (const schemaFolder of COMM_SCHEMA_FOLDERS) {
-    commFiles.push(
-      ...(await config.commSource.listFiles(
-        config.commRev,
-        schemaFolder.folderPath
-      ))
-    );
-  }
-  commFiles.push(
-    ...singleFiles.filter((f) => f.branch === 'comm').map((f) => f.filePath)
+  // The COMM files are read from the git cache.
+  await copyFiles(
+    config.commSource,
+    config.commRev,
+    COMM_SCHEMA_FOLDERS.map((f) => f.folderPath),
+    getSingleFiles('comm'),
+    path.join(sourceFolder, 'comm')
   );
-  for (const filePath of commFiles) {
-    await writeSourceFile(
-      sourceFolder,
-      `comm/${filePath}`,
-      await config.commSource.readFile(config.commRev, filePath)
-    );
-  }
 
-  // Download MOZILLA files from GitHub.
-  const mozillaFiles = [];
-  for (const schemaFolder of MOZILLA_SCHEMA_FOLDERS) {
-    mozillaFiles.push(
-      ...(await config.mozillaSource.listFiles(
-        config.mozillaRev,
-        schemaFolder.folderPath
-      ))
-    );
-  }
-  mozillaFiles.push(
-    ...singleFiles.filter((f) => f.branch === 'mozilla').map((f) => f.filePath)
+  // Only a single revision of the MOZILLA repository is needed, it is fetched
+  // into the temp folder.
+  const mozillaRef = await getMozillaRefFromGeckoRevFile(
+    config.commSource,
+    config.commRev
   );
-  for (const filePath of mozillaFiles) {
-    await writeSourceFile(
-      sourceFolder,
-      filePath,
-      await config.mozillaSource.readFile(config.mozillaRev, filePath)
+  const { source, commit } = await LocalGitSource.fetchRef(
+    MOZILLA_GIT_URL,
+    mozillaRef,
+    path.join(config.tempFolder, 'mozilla.git')
+  );
+  config.mozillaRev = commit;
+  console.log(` - mozilla ${mozillaRef}: ${commit}`);
+  try {
+    await copyFiles(
+      source,
+      commit,
+      MOZILLA_SCHEMA_FOLDERS.map((f) => f.folderPath),
+      getSingleFiles('mozilla'),
+      sourceFolder
     );
+  } finally {
+    source.close();
   }
 
   return sourceFolder;

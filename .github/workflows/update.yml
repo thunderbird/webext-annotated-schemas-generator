@@ -96,9 +96,6 @@ jobs:
 
       - name: Run generator script for --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }}
         id: generate
-        env:
-          # Raises the limit of the GitHub API, see modules/sources.mjs.
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           node get_thunderbird_schema_files.js --release=${{ inputs.release }} --manifest_version=${{ inputs.manifestVersion }} --output=./output/schema-files/ --no-link-check ${{ inputs.compatData == false && '--no-compat-data' || '' }}
 

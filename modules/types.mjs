@@ -24,8 +24,6 @@
  * @property {string} [mozillaRev] - Mozilla repository revision (git commit)
  * @property {import('./sources.mjs').LocalGitSource} [commSource] - The local
  *    clone of the comm repository
- * @property {import('./sources.mjs').GitHubSource} [mozillaSource] - The
- *    mozilla repository on GitHub
  * @property {Object} [urlReplacements] - URL placeholder replacements
  * @property {SchemaInfo[]} [schemaInfos] - Array of processed schema information
  */

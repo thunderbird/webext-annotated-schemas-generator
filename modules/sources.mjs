@@ -3,9 +3,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
-import { GITHUB_API_URL, GITHUB_RAW_URL } from './constants.mjs';
-import { request } from './tools.mjs';
-
 // Based on the sources of the policy-templates generator:
 // https://github.com/thunderbird/policy-templates/blob/main/generator/modules/sources.mjs
 
@@ -13,7 +10,7 @@ const execFileAsync = promisify(execFile);
 
 /**
  * Read files and their history from a local bare git repository, using the
- * native git command. The repository is a blobless clone: file contents are
+ * native git command. The repository is a partial clone: file contents are
  * fetched when needed, see prefetchHistory() and prefetchFiles().
  */
 export class LocalGitSource {
@@ -79,6 +76,47 @@ export class LocalGitSource {
       '+refs/heads/*:refs/heads/*',
     ]);
     return source;
+  }
+
+  /**
+   * Fetch a single commit of the given repository into a new local repository,
+   * without its history and without file contents or folders: they are fetched
+   * when needed, see prefetchFiles(). Used for repositories where only a single
+   * revision is needed, which are too large to be cloned.
+   *
+   * @param {string} url - URL of the remote repository.
+   * @param {string} ref - A branch or tag, e.g. "main" or
+   *    "FIREFOX_153_5_0esr_BUILD1".
+   * @param {string} dir - Path of the local bare repository, which must not
+   *    exist yet.
+   *
+   * @returns {Promise<{source: LocalGitSource, commit: string}>}
+   */
+  static async fetchRef(url, ref, dir) {
+    console.log(` - fetching ${ref} of ${url} ...`);
+    const source = new LocalGitSource(dir);
+    await execFileAsync('git', ['init', '--quiet', '--bare', dir]);
+    await source.#git(['remote', 'add', 'origin', url]);
+    // Missing objects are fetched from origin on demand.
+    await source.#git(['config', 'remote.origin.promisor', 'true']);
+    await source.#git(['config', 'remote.origin.partialclonefilter', 'tree:0']);
+    try {
+      await source.#git([
+        'fetch',
+        '--quiet',
+        '--depth=1',
+        '--filter=tree:0',
+        '--no-tags',
+        'origin',
+        ref,
+      ]);
+    } catch (ex) {
+      throw new Error(`Fetching ${ref} of ${url} failed: ${ex.stderr || ex}`);
+    }
+    const commit = (
+      await source.#git(['rev-parse', 'FETCH_HEAD^{commit}'])
+    ).trim();
+    return { source, commit };
   }
 
   async #isCloneOf(url) {
@@ -226,7 +264,7 @@ export class LocalGitSource {
     if (!ids.length) {
       return;
     }
-    console.log(` - fetching ${ids.length} files into the git cache ...`);
+    console.log(` - fetching ${ids.length} files into ${this.dir} ...`);
     await this.#git(
       [
         '-c',
@@ -336,84 +374,5 @@ class CatFileBatch {
 
   close() {
     this.#process.stdin.end();
-  }
-}
-
-/**
- * Read single revisions of files from a GitHub repository. Commits and folder
- * listings are requested from the GitHub API, files are downloaded from
- * raw.githubusercontent.com. The file history is not available, as the GitHub
- * API does not support a full history (see LocalGitSource.getFileHistory()).
- */
-export class GitHubSource {
-  /**
-   * @param {string} repository - The repository, e.g. "mozilla-firefox/firefox".
-   */
-  constructor(repository) {
-    this.repository = repository;
-    this.description = `https://github.com/${repository}`;
-  }
-
-  async #api(apiPath, accept = 'application/vnd.github+json') {
-    const headers = { Accept: accept };
-    if (process.env.GITHUB_TOKEN) {
-      headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-    }
-    return request(
-      `${GITHUB_API_URL}/repos/${this.repository}${apiPath}`,
-      headers
-    );
-  }
-
-  /**
-   * Resolve a branch or tag to a commit.
-   *
-   * @param {string} ref - e.g. "main" or "FIREFOX_153_5_0esr_BUILD1".
-   * @returns {Promise<string|null>} the commit, or null if the ref does not
-   *    exist
-   */
-  async resolveRef(ref) {
-    try {
-      const sha = await this.#api(
-        `/commits/${encodeURIComponent(ref)}`,
-        'application/vnd.github.sha'
-      );
-      return sha?.trim() ?? null;
-    } catch (ex) {
-      // An unknown ref is reported as "Unprocessable Entity".
-      if (ex.status === 422) {
-        return null;
-      }
-      throw ex;
-    }
-  }
-
-  /**
-   * Get the paths of the files inside a folder (not including sub folders) at
-   * the given commit.
-   *
-   * @param {string} commit
-   * @param {string} folderPath - Path of the folder inside the repository.
-   * @returns {Promise<string[]>}
-   */
-  async listFiles(commit, folderPath) {
-    const entries = JSON.parse(
-      (await this.#api(`/contents/${folderPath}?ref=${commit}`)) ?? '[]'
-    );
-    return entries.filter((e) => e.type === 'file').map((e) => e.path);
-  }
-
-  /**
-   * Read a file at the given commit.
-   *
-   * @param {string} commit
-   * @param {string} filePath - Path of the file inside the repository.
-   * @returns {Promise<string|null>} content of the file, or null if it does
-   *    not exist at the given commit
-   */
-  async readFile(commit, filePath) {
-    return request(
-      `${GITHUB_RAW_URL}/${this.repository}/${commit}/${filePath}`
-    );
   }
 }
