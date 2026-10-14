@@ -161,8 +161,17 @@ export async function getMozillaRevFromGeckoRevFile(release, commRev, temporary)
     commRev
   );
   const content = await readCachedUrl(gecko_rev_url, { temporary });
-  const { GECKO_HEAD_REV } = yaml.parse(content);
-  return GECKO_HEAD_REV;
+  const { GECKO_HEAD_REV, GECKO_HEAD_REF } = yaml.parse(content);
+  // GECKO_HEAD_REV is an exact hash and takes precedence. Newer release
+  // branches may not pin it and only set a tag in GECKO_HEAD_REF, which hg
+  // can resolve as well.
+  const rev = GECKO_HEAD_REV || GECKO_HEAD_REF;
+  if (!rev) {
+    throw new Error(
+      `Neither GECKO_HEAD_REV nor GECKO_HEAD_REF found in ${gecko_rev_url}`
+    );
+  }
+  return rev;
 }
 
 /**
