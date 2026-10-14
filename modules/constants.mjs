@@ -27,9 +27,11 @@ export const OLDEST_ESR = 115;
 // to map the version in which an element was added to the next ESR.
 export const HISTORICAL_ESR_VERSIONS = [60, 68, 78, 91, 102];
 
+export const COMM_SCHEMA_FOLDER = 'mail/components/extensions/schemas';
+
 export const COMM_SCHEMA_FOLDERS = [
   {
-    folderPath: 'mail/components/extensions/schemas',
+    folderPath: COMM_SCHEMA_FOLDER,
     zipFileNameSuffix: 'mail',
   },
   {

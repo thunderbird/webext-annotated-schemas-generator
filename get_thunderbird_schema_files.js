@@ -8,14 +8,12 @@
  * Author: John Bieling
  */
 
-import extract from 'extract-zip';
 import fs from 'node:fs/promises';
 import jsonUtils from 'comment-json';
 import os from 'node:os';
 import path from 'node:path';
 
 import {
-  downloadUrl,
   getJsonFiles,
   parseArgs,
   replaceUrlsInDescription,
@@ -26,21 +24,26 @@ import {
   filterAnnotationEntry,
 } from './modules/tools.mjs';
 
-import {
-  checkoutSourceFile,
-  getRevisionFromBuildHub,
-  getCurrentThunderbirdESR,
-  getHgFolderZipPath,
-  getMozillaRevFromGeckoRevFile,
-  getSupportedESRVersions,
-} from './modules/mozilla.mjs';
+import { getMozillaRevFromGeckoRevFile } from './modules/mozilla.mjs';
+
+import { GitHubSource, LocalGitSource } from './modules/sources.mjs';
 
 import {
+  getEsrHistoryBranches,
+  getEsrVersions,
+  getReleaseBranch,
+} from './modules/branches.mjs';
+
+import {
+  COMM_GIT_URL,
+  COMM_SCHEMA_FOLDER,
   COMM_SCHEMA_FOLDERS,
   COMM_URL_PLACEHOLDER_FILE,
   COMM_VERSION_FILE,
+  GIT_CACHE_DIR,
   HELP_SCREEN,
   LOCALE_FILES,
+  MOZILLA_GITHUB_REPOSITORY,
   MOZILLA_SCHEMA_FOLDERS,
   REGISTRY_FILES,
 } from './modules/constants.mjs';
@@ -77,48 +80,62 @@ async function main() {
     path.join(os.tmpdir(), 'webext-schemas-generator')
   );
 
-  // Download schema files, if requested.
-  if (config.release) {
-    if (config.release === 'esr') {
-      const esr = await getCurrentThunderbirdESR();
-      if (!esr) {
-        throw new Error(
-          'Unable to determine version of current Thunderbird ESR.'
-        );
-      }
-      config.release = `esr${esr}`;
+  console.log(` Reading the repositories ...`);
 
-      // Build ESR version list and fetch commRevs for all ESR repos.
-      const esrVersions = await getSupportedESRVersions();
-      config.esrVersions = esrVersions;
-      config.esrCommRevs = {};
-      for (const v of esrVersions) {
-        config.esrCommRevs[v] = {
-          rev: await getRevisionFromBuildHub(`comm-esr${v}`),
-          temporary: false,
-        };
-      }
-    } else if (config.release === 'daily' || config.release === 'central') {
-      // We allow "daily" as an input --release, but use "central".
-      config.release = `central`;
-    }
+  // The history of the Thunderbird repository is needed for the compat data,
+  // it is cloned (or updated) into a local cache.
+  config.commSource = await LocalGitSource.open(COMM_GIT_URL, GIT_CACHE_DIR);
+  config.mozillaSource = new GitHubSource(MOZILLA_GITHUB_REPOSITORY);
+  try {
+    await generate();
+  } finally {
+    config.commSource.close();
+    // Cleanup.
+    await fs.rm(config.tempFolder, { recursive: true, force: true });
+  }
+}
 
-    console.log(` Downloading files from Mozilla ...`);
-
-    // Add commRev and mozillaRev properties to the config object.
-    const { commRev, mozillaRev } = await getMatchingRevisions(config.release);
-    Object.assign(config, { commRev, mozillaRev });
-
-    config.source = await downloadFilesFromMozilla(config.release);
-  } else {
+async function generate() {
+  if (!config.release) {
     // Set the release based on the provided folder name.
     config.release = path.basename(config.source).split('-')[1];
+  }
+  // We allow "daily" as an input --release, but use "central".
+  if (config.release === 'daily') {
+    config.release = 'central';
+  }
+  config.branch = await getReleaseBranch(config.commSource, config.release);
+  if (config.release === 'esr') {
+    config.release = config.branch;
+  }
 
+  // The branches whose history is used for the compat data.
+  config.historyBranches = [config.branch];
+  if (config.release.startsWith('esr')) {
+    config.historyBranches = await getEsrHistoryBranches(
+      config.commSource,
+      config.branch
+    );
+    config.esrVersions = getEsrVersions(config.historyBranches);
+  }
+
+  // Add commRev and mozillaRev properties to the config object.
+  Object.assign(config, await getMatchingRevisions(config.branch));
+
+  // Download schema files, if requested.
+  if (!config.source) {
     console.log(` Downloading files from Mozilla ...`);
+    config.source = await downloadFilesFromMozilla();
+  }
 
-    // Add commRev and mozillaRev properties to the config object.
-    const { commRev, mozillaRev } = await getMatchingRevisions(config.release);
-    Object.assign(config, { commRev, mozillaRev });
+  if (!config['no-compat-data']) {
+    console.log(` Downloading the history of the schema files ...`);
+    await config.commSource.prefetchHistory(
+      await Promise.all(
+        config.historyBranches.map((b) => config.commSource.resolveBranch(b))
+      ),
+      [COMM_SCHEMA_FOLDER, COMM_VERSION_FILE]
+    );
   }
 
   // Setup output directory.
@@ -283,7 +300,7 @@ async function main() {
       config,
       value: schemaInfo.schema,
       schemaInfo,
-      revision: config.commRev.rev,
+      revision: config.commRev,
     });
   }
 
@@ -350,164 +367,112 @@ async function main() {
       sortKeys(schemaInfo.schema)
     );
   }
-
-  // Cleanup.
-  await fs.rm(config.tempFolder, { recursive: true, force: true });
 }
 
 // -----------------------------------------------------------------------------
 
-async function getMatchingRevisions(release) {
-  if (!release) {
-    throw new Error('Missing release parameter in getMatchingRevisions()');
+/**
+ * Get the revisions of the COMM and MOZILLA repositories for a branch.
+ *
+ * @param {string} branch - The branch of the COMM repository, e.g. "esr153".
+ *
+ * @returns {Promise<{commRev: string, mozillaRev: string}>}
+ */
+async function getMatchingRevisions(branch) {
+  const commRev = await config.commSource.resolveBranch(branch);
+  if (!commRev) {
+    throw new Error(
+      `Branch ${branch} not found in ${config.commSource.description}`
+    );
   }
-
-  // Decide if responses should be cached. For example one could skip caching for
-  // release by setting temporary = release === 'central';
-  const temporary = false;
-  const commRev = {
-    rev: await getRevisionFromBuildHub(`comm-${release}`),
-    temporary,
-  };
-
-  const mozillaRev = {
-    rev: release === 'central'
-      ? await getRevisionFromBuildHub('mozilla-central')
-      : await getMozillaRevFromGeckoRevFile(release, commRev.rev, temporary),
-    temporary,
-  };
-
+  const mozillaRev = await getMozillaRevFromGeckoRevFile(
+    config.commSource,
+    config.mozillaSource,
+    commRev
+  );
+  console.log(` - ${branch}: comm ${commRev}, mozilla ${mozillaRev}`);
   return { commRev, mozillaRev };
 }
 
 /**
- * Downloads the required files from hg.mozilla.org. The files are specified by
- * the const COMM_SCHEMA_FOLDERS, MOZILLA_SCHEMA_FOLDERS and LOCALE_FILES.
+ * Write a file into the temp directory with the downloaded files.
  *
- * @param {string} release - The release to get the files for, matching the names
- *   used for releases on hg.mozilla.org (central, beta, esr128, ...)
+ * @param {string} sourceFolder - The temp directory.
+ * @param {string} filePath - The path of the file inside the source directory.
+ * @param {?string} content - The content of the file.
+ */
+async function writeSourceFile(sourceFolder, filePath, content) {
+  if (content === null) {
+    throw new Error(`Download of ${filePath} did not succeed!`);
+  }
+  const targetPath = path.join(sourceFolder, ...filePath.split('/'));
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.writeFile(targetPath, content, 'utf-8');
+}
+
+/**
+ * Downloads the required files from the COMM and MOZILLA repositories. The
+ * files are specified by the const COMM_SCHEMA_FOLDERS, MOZILLA_SCHEMA_FOLDERS,
+ * LOCALE_FILES and REGISTRY_FILES. Files of the COMM repository are stored in
+ * the comm/ folder, like in a local checkout.
  *
  * @returns {string} Path to the temp directory with the downloaded files.
  */
-async function downloadFilesFromMozilla(release) {
-  if (!release) {
-    throw new Error('Missing release parameter in downloadFilesFromMozilla()');
-  }
+async function downloadFilesFromMozilla() {
+  const sourceFolder = path.join(config.tempFolder, 'mozilla');
+  const singleFiles = [
+    ...LOCALE_FILES,
+    ...REGISTRY_FILES,
+    { branch: 'comm', filePath: COMM_VERSION_FILE },
+  ];
 
-  const folders = new Set();
-
-  // Download COMM schema files.
+  // Download COMM files from the local clone.
+  await config.commSource.prefetchFiles(config.commRev, [
+    ...COMM_SCHEMA_FOLDERS.map((f) => f.folderPath),
+    ...singleFiles.filter((f) => f.branch === 'comm').map((f) => f.filePath),
+  ]);
+  const commFiles = [];
   for (const schemaFolder of COMM_SCHEMA_FOLDERS) {
-    const repository = `comm-${release}`;
-    const zipFileName = `${release}-${schemaFolder.zipFileNameSuffix}.zip`;
-    const zipFilePath = path.join(config.tempFolder, zipFileName);
-    try {
-      await downloadUrl(
-        getHgFolderZipPath(repository, schemaFolder.folderPath, config.commRev.rev),
-        zipFilePath
-      );
-      console.log(` - unpacking ${zipFileName} ...`);
-      await extract(path.resolve(zipFilePath), {
-        dir: path.resolve(config.tempFolder),
-        onEntry: (entry) => folders.add(entry.fileName.split('/')[0]),
-      });
-      await fs.unlink(zipFilePath);
-    } catch (ex) {
-      console.warn(` !! Skipping ${zipFileName}: ${ex.message}`);
-    }
+    commFiles.push(
+      ...(await config.commSource.listFiles(
+        config.commRev,
+        schemaFolder.folderPath
+      ))
+    );
   }
-
-  // Download MOZILLA schema files.
-  for (const schemaFolder of MOZILLA_SCHEMA_FOLDERS) {
-    const repository = `mozilla-${release}`;
-    const zipFileName = `${release}-${schemaFolder.zipFileNameSuffix}.zip`;
-    const zipFilePath = path.join(config.tempFolder, zipFileName);
-    try {
-      await downloadUrl(
-        getHgFolderZipPath(
-          repository,
-          schemaFolder.folderPath,
-          config.mozillaRev.rev
-        ),
-        zipFilePath
-      );
-      console.log(` - unpacking ${zipFileName} ...`);
-      await extract(path.resolve(zipFilePath), {
-        dir: path.resolve(config.tempFolder),
-        onEntry: (entry) => folders.add(entry.fileName.split('/')[0]),
-      });
-      await fs.unlink(zipFilePath);
-    } catch (ex) {
-      console.warn(` !! Skipping ${zipFileName}: ${ex.message}`);
-    }
-  }
-
-  // Find the mozilla-* folder and rename /comm-* to /comm.
-  let mozillaFolder;
-  for (const folder of folders) {
-    const parts = folder.split('-').map((e) => e.toLowerCase());
-    if (parts[0] === 'mozilla') {
-      mozillaFolder = folder;
-    }
-    if (parts[0] === 'comm') {
-      await fs.rename(
-        path.join(config.tempFolder, folder),
-        path.join(config.tempFolder, 'comm')
-      );
-    }
-  }
-
-  // Check if all needed folders are available.
-  try {
-    await fs.access(path.join(config.tempFolder, mozillaFolder));
-    await fs.access(path.join(config.tempFolder, 'comm'));
-  } catch (ex) {
-    throw new Error('Download of schema files did not succeed!');
-  }
-
-  // Move /comm inside of /mozilla.
-  await fs.rename(
-    path.join(config.tempFolder, 'comm'),
-    path.join(config.tempFolder, mozillaFolder, 'comm')
+  commFiles.push(
+    ...singleFiles.filter((f) => f.branch === 'comm').map((f) => f.filePath)
   );
-
-  // Download locale files.
-  for (const localeFile of LOCALE_FILES) {
-    const repository = `${localeFile.branch}-${release}`;
-    await checkoutSourceFile(
-      config,
-      repository,
-      localeFile.filePath,
-      localeFile.branch === 'comm' ? config.commRev.rev : config.mozillaRev.rev,
-      mozillaFolder
+  for (const filePath of commFiles) {
+    await writeSourceFile(
+      sourceFolder,
+      `comm/${filePath}`,
+      await config.commSource.readFile(config.commRev, filePath)
     );
   }
 
-  // Download extension registry files.
-  for (const registryFile of REGISTRY_FILES) {
-    const repository = `${registryFile.branch}-${release}`;
-    await checkoutSourceFile(
-      config,
-      repository,
-      registryFile.filePath,
-      registryFile.branch === 'comm' ? config.commRev.rev : config.mozillaRev.rev,
-      mozillaFolder
+  // Download MOZILLA files from GitHub.
+  const mozillaFiles = [];
+  for (const schemaFolder of MOZILLA_SCHEMA_FOLDERS) {
+    mozillaFiles.push(
+      ...(await config.mozillaSource.listFiles(
+        config.mozillaRev,
+        schemaFolder.folderPath
+      ))
+    );
+  }
+  mozillaFiles.push(
+    ...singleFiles.filter((f) => f.branch === 'mozilla').map((f) => f.filePath)
+  );
+  for (const filePath of mozillaFiles) {
+    await writeSourceFile(
+      sourceFolder,
+      filePath,
+      await config.mozillaSource.readFile(config.mozillaRev, filePath)
     );
   }
 
-  // Download application version file from comm-* repository.
-  {
-    const repository = `comm-${release}`;
-    await checkoutSourceFile(
-      config,
-      repository,
-      COMM_VERSION_FILE,
-      config.commRev.rev,
-      mozillaFolder
-    );
-  }
-
-  return path.join(config.tempFolder, mozillaFolder);
+  return sourceFolder;
 }
 
 /**

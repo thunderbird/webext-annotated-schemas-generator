@@ -15,8 +15,17 @@
  * @property {string} output - Output directory for generated schemas
  * @property {string} manifest_version - WebExtension manifest version ("2" or "3")
  * @property {string} [tempFolder] - Temporary folder for processing
- * @property {{rev: string, temporary: boolean}} [commRev] - Comm repository revision
- * @property {{rev: string, temporary: boolean}} [mozillaRev] - Mozilla repository revision
+ * @property {string} [branch] - Branch of the comm repository (e.g. "esr153", "main")
+ * @property {string[]} [historyBranches] - Branches whose history is used for
+ *    the compat data (for ESR releases: all ESR branches up to `branch`)
+ * @property {number[]} [esrVersions] - All ESR versions up to `branch`, only
+ *    for ESR releases
+ * @property {string} [commRev] - Comm repository revision (git commit)
+ * @property {string} [mozillaRev] - Mozilla repository revision (git commit)
+ * @property {import('./sources.mjs').LocalGitSource} [commSource] - The local
+ *    clone of the comm repository
+ * @property {import('./sources.mjs').GitHubSource} [mozillaSource] - The
+ *    mozilla repository on GitHub
  * @property {Object} [urlReplacements] - URL placeholder replacements
  * @property {SchemaInfo[]} [schemaInfos] - Array of processed schema information
  */

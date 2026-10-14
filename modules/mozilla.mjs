@@ -8,6 +8,8 @@ import { downloadUrl, readCachedUrl } from './tools.mjs';
 
 /**
  * @typedef {import('./types.mjs').Config} Config
+ * @typedef {import('./sources.mjs').LocalGitSource} LocalGitSource
+ * @typedef {import('./sources.mjs').GitHubSource} GitHubSource
  */
 
 const requestJson = bent('GET', 'json', 200);
@@ -151,25 +153,32 @@ export async function getRevisionFromBuildHub(tree) {
 }
 
 /**
- * Download the GECKO_REV file from hg.mozilla.org to get the MOZILLA revision
- * matching a given COMM revision.
+ * Read the GECKO_REV file of a COMM revision to get the matching MOZILLA
+ * revision.
+ *
+ * @param {LocalGitSource} commSource
+ * @param {GitHubSource} mozillaSource
+ * @param {string} commRev - The COMM revision.
+ *
+ * @returns {Promise<string>} The MOZILLA revision.
  */
-export async function getMozillaRevFromGeckoRevFile(release, commRev, temporary) {
-  const gecko_rev_url = getHgFilePath(
-    `comm-${release}`,
-    COMM_GECKO_REV,
-    commRev
-  );
-  const content = await readCachedUrl(gecko_rev_url, { temporary });
-  const { GECKO_HEAD_REV, GECKO_HEAD_REF } = yaml.parse(content);
-  // GECKO_HEAD_REV is an exact hash and takes precedence. Newer release
-  // branches may not pin it and only set a tag in GECKO_HEAD_REF, which hg
-  // can resolve as well.
-  const rev = GECKO_HEAD_REV || GECKO_HEAD_REF;
+export async function getMozillaRevFromGeckoRevFile(
+  commSource,
+  mozillaSource,
+  commRev
+) {
+  const content = await commSource.readFile(commRev, COMM_GECKO_REV);
+  // GECKO_HEAD_REF is a tag (e.g. FIREFOX_153_5_0esr_BUILD1) or "default"
+  // (the main branch). GECKO_HEAD_REV is ignored: it is a mercurial changeset,
+  // which does not exist in the git repository.
+  const { GECKO_HEAD_REF } = yaml.parse(content ?? '') ?? {};
+  if (!GECKO_HEAD_REF) {
+    throw new Error(`No GECKO_HEAD_REF found in ${COMM_GECKO_REV} of ${commRev}`);
+  }
+  const ref = GECKO_HEAD_REF === 'default' ? 'main' : GECKO_HEAD_REF;
+  const rev = await mozillaSource.resolveRef(ref);
   if (!rev) {
-    throw new Error(
-      `Neither GECKO_HEAD_REV nor GECKO_HEAD_REF found in ${gecko_rev_url}`
-    );
+    throw new Error(`${ref} not found in ${mozillaSource.description}`);
   }
   return rev;
 }

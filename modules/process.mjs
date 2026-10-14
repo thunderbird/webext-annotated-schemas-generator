@@ -1,20 +1,19 @@
 import bcd from '@mdn/browser-compat-data' with { type: 'json' };
 import jsonUtils from 'comment-json';
 
-import {
-  getHgFilePath,
-  getHgFolderFileList,
-  getHgRevisionLogPath,
-} from './mozilla.mjs';
+import { getEsrVersion } from './branches.mjs';
 import {
   validateUrl,
-  readCachedUrl,
   replaceUrlsInDescription,
   fixMalformedClosingTags,
   extractDlDescriptions,
   isOdd,
 } from './tools.mjs';
-import { COMM_VERSION_FILE, API_DOC_BASE_URL } from './constants.mjs';
+import {
+  COMM_SCHEMA_FOLDER,
+  COMM_VERSION_FILE,
+  API_DOC_BASE_URL,
+} from './constants.mjs';
 
 /**
  * @typedef {import('./types.mjs').Config} Config
@@ -100,8 +99,9 @@ export function processImports(schema, value = schema) {
  *    in the schema.
  * @param {SchemaInfo} params.schemaInfo - Information about the currently processed
  *    schema (owner, file, schema, version_added).
- * @param {string} params.searchPath - The full hierarchical path of an element
- *    to search for in the schema.
+ * @param {Set<string>} params.collectPaths - If given, a historical schema is
+ *    processed: the paths of all its elements are added to this set, and no
+ *    compat data is generated.
  * @param {string} params.revision - The currently processed revision, only used
  *    for debug logging.
  *
@@ -112,7 +112,7 @@ export async function processSchema({
   value,
   fullPath = [],
   schemaInfo = null,
-  searchPath = null,
+  collectPaths = null,
   revision = null,
 }) {
   const pathElements = [...fullPath];
@@ -136,45 +136,11 @@ export async function processSchema({
     }
   };
 
-  // If a searchPath is given, a historical schema is being checked for the
-  // existence of a certain element. Check if the searched element can be a child
-  // of the current path and skip further processing if not. Set the found flag
-  // if the searched element was found, and also skip further processing.
-  if (searchPath) {
+  // If collectPaths is given, a historical schema is being processed to learn
+  // which elements it includes, see hasPath().
+  if (collectPaths) {
     processLogger('search', pathElements);
-
-    // TODO: Joining path ref elements for comparison seems to be the most simple
-    // approach. Should we use a different implementation?
-    const searchPathRef = searchPath.map((e) => e.ref).join('~');
-    const pathRef = pathElements.map((e) => e.ref).join('~');
-
-    if (!searchPathRef.startsWith(pathRef)) {
-      return value;
-    } else {
-      // Special handling for choices: A parameter could have been added in TB78,
-      // but turned into a choice in TB96, which results in two compat entries:
-      // - one for the parameter itself              : added in TB78
-      // - one for the first choice of the parameter : added in TB96
-      // However, the first choice is the original parameter and should be logged
-      // as added in TB78. Therefore, if the search ends with "choices~0", search
-      // the parent first.
-      if (searchPathRef.endsWith('~items~0~choices~0')) {
-        if (searchPathRef.slice(0, -18) === pathRef) {
-          searchPath.found = true;
-          return value;
-        }
-      } else if (searchPathRef.endsWith('~choices~0')) {
-        if (searchPathRef.slice(0, -10) === pathRef) {
-          searchPath.found = true;
-          return value;
-        }
-      }
-
-      if (searchPathRef === pathRef) {
-        searchPath.found = true;
-        return value;
-      }
-    }
+    collectPaths.add(getPathRef(pathElements));
   }
 
   // If there are no children, return without further processing.
@@ -214,7 +180,7 @@ export async function processSchema({
         value: filtered[i],
         schemaInfo,
         fullPath: [...pathElements, newPathElement],
-        searchPath,
+        collectPaths,
         revision,
       });
     }
@@ -319,9 +285,8 @@ export async function processSchema({
 
   // Generate compat data if needed.
   if (
-    // Skip if a search path was specified, which is used to search for a path in
-    // a historical schema, where compat data calculation is not needed.
-    !searchPath &&
+    // Skip historical schemas, where compat data calculation is not needed.
+    !collectPaths &&
     // Skip namespace at the top level.
     pathElements.length > 0 &&
     // Process only actual API elements, skip groups.
@@ -392,7 +357,7 @@ export async function processSchema({
       value: value[key],
       schemaInfo,
       fullPath: [...pathElements, { ref: key, type: 'property' }],
-      searchPath,
+      collectPaths,
       revision,
     });
 
@@ -412,7 +377,7 @@ export async function processSchema({
           v = v.replace(/:permission:`(.*?)`/g, '<permission>$1</permission>');
 
           // Replace URLs and single or double back ticks and rebrand.
-          v = replaceUrlsInDescription(v, config.urlReplacements, revision === config.commRev.rev)
+          v = replaceUrlsInDescription(v, config.urlReplacements, revision === config.commRev)
             .replace(/``(.+?)``/g, '<val>$1</val>')
             .replace(/`(.+?)`/g, '<val>$1</val>')
             .replaceAll('Firefox', 'Thunderbird');
@@ -699,159 +664,178 @@ function getApiDocSlug(config) {
 }
 
 /**
- * Analyze a historical schema file and check if a specific API element exists.
+ * Get the reference of a path, as used in the sets of historical schema paths.
  *
- * @param {Config} config - Global config data.
- * @param {string} repo - The repository name (e.g., "comm-esr128").
- * @param {string} fileName - Name of the Thunderbird schema file.
- * @param {array} searchPath - Path of the searched API element.
- * @param {string} revision - Historical revision (mercurial changeset identifier).
+ * @param {array} pathElements - The path of a schema element.
+ * @returns {string} e.g. "windows~functions~create"
+ */
+function getPathRef(pathElements) {
+  return pathElements.map((e) => e.ref).join('~');
+}
+
+/**
+ * Check if a historical schema includes an element.
+ *
+ * @param {Set<string>} paths - The paths of all elements of the historical
+ *    schema, see processSchema().
+ * @param {array} searchPath - The path of the element.
  *
  * @returns {boolean}
  */
-async function testRevision(config, repo, fileName, searchPath, revision, temporary) {
-  const schema_url = getHgFilePath(
-    repo,
-    `mail/components/extensions/schemas/${fileName}`,
-    revision
-  );
-
-  // Read and process the schema belonging to the requested revision.
-  const schema = processImports(
-    jsonUtils.parse(
-      await readCachedUrl(schema_url, { temporary })
-    )
-  );
-  const searchPathClone = [...searchPath];
-
-  await processSchema({
-    config,
-    value: schema,
-    searchPath: searchPathClone,
-    revision,
-  });
-
-  return !!searchPathClone.found;
+function hasPath(paths, searchPath) {
+  const searchPathRef = getPathRef(searchPath);
+  if (paths.has(searchPathRef)) {
+    return true;
+  }
+  // Special handling for choices: A parameter could have been added in TB78,
+  // but turned into a choice in TB96, which results in two compat entries:
+  // - one for the parameter itself              : added in TB78
+  // - one for the first choice of the parameter : added in TB96
+  // However, the first choice is the original parameter and should be logged
+  // as added in TB78. Therefore, if the search ends with "choices~0", the
+  // parent counts as well.
+  if (searchPathRef.endsWith('~items~0~choices~0')) {
+    return paths.has(searchPathRef.slice(0, -18));
+  }
+  if (searchPathRef.endsWith('~choices~0')) {
+    return paths.has(searchPathRef.slice(0, -10));
+  }
+  return false;
 }
 
 /**
- * Build a unified revision list for ESR scanning. Walks ESR repos from oldest
- * to newest, skipping shared history between repos.
+ * Compare version numbers like "128.2.0" or "131".
  *
- * @param {Config} config - Global config data.
- * @param {string} schemaFilePath - Path of the schema file in the repo.
- *
- * @returns {Array<{node: string, repo: string, esrVersion: number}>}
+ * @returns {number} negative if a < b, positive if a > b, 0 if equal
  */
-async function buildEsrRevisionList(config, schemaFilePath) {
-  const revisionList = [];
-  const seenRevisions = new Set();
-  const folderPath = schemaFilePath.substring(
-    0,
-    schemaFilePath.lastIndexOf('/')
-  );
-  const fileName = schemaFilePath.substring(
-    schemaFilePath.lastIndexOf('/') + 1
-  );
-
-  for (const esrVersion of config.esrVersions) {
-    const repo = `comm-esr${esrVersion}`;
-    const commRev = config.esrCommRevs[esrVersion];
-
-    // Pre-check: skip if the schema file does not exist in this repo.
-    try {
-      const files = await getHgFolderFileList(repo, folderPath, commRev.rev);
-      if (!files.includes(fileName)) {
-        continue;
-      }
-    } catch (ex) {
-      continue;
-    }
-
-    const rev_url = getHgRevisionLogPath(repo, schemaFilePath, commRev.rev);
-    let rev;
-    try {
-      // ESR revision logs are stable and can be cached persistently.
-      rev = jsonUtils.parse(await readCachedUrl(rev_url, { temporary: false }));
-    } catch (ex) {
-      continue;
-    }
-
-    // Walk oldest to newest, skip revisions already seen from older ESR repos.
-    for (let i = rev.entries.length; i > 0; i--) {
-      const entry = rev.entries.at(i - 1);
-      if (!seenRevisions.has(entry.node)) {
-        seenRevisions.add(entry.node);
-        revisionList.push({ node: entry.node, repo, esrVersion });
-      }
+function compareVersion(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff) {
+      return diff;
     }
   }
-
-  return revisionList;
+  return 0;
 }
 
 /**
- * Request revision log for the specified file and find the first revision which
- * supports the specific API element.
+ * Get the version which is reported as version_added for a historical
+ * revision.
+ *
+ * For ESR branches, a version of the ESR itself (a backport during the ESR
+ * cycle) is reported as is, other versions as the next ESR including them.
+ * For other branches, the major version is reported.
+ *
+ * @param {Config} config - Global config data.
+ * @param {string} version - The content of the version file of the revision,
+ *    e.g. "128.2.0esr", "131.0a1" or "130.0b2".
+ * @param {number|null} esrVersion - The ESR branch the revision belongs to.
+ *
+ * @returns {string}
+ */
+function getReportedVersion(config, version, esrVersion) {
+  const major = parseInt(version, 10);
+  if (!config.release.startsWith('esr')) {
+    return `${major}`;
+  }
+  if (major === esrVersion) {
+    // Backported during ESR cycle, strip non-numeric suffix.
+    return version.replace(/[^0-9.].*/g, '');
+  }
+  const esr = config.esrVersions.find((v) => v >= major);
+  return `${esr || config.esrVersions.at(-1)}.0`;
+}
+
+// Map of schema file names to the promises of their historical revisions.
+const SCHEMA_REVISIONS_CACHE = new Map();
+
+/**
+ * Get all revisions of a Thunderbird schema file in the history of the
+ * processed branch (for ESR releases: of all ESR branches up to the processed
+ * one), with the paths of their elements and their reported version.
+ *
+ * @param {Config} config - Global config data.
+ * @param {string} fileName - Name of the Thunderbird schema file.
+ *
+ * @returns {Promise<{revision: string, version: string, paths: Set<string>}[]>}
+ */
+function getSchemaRevisions(config, fileName) {
+  if (!SCHEMA_REVISIONS_CACHE.has(fileName)) {
+    SCHEMA_REVISIONS_CACHE.set(fileName, readSchemaRevisions(config, fileName));
+  }
+  return SCHEMA_REVISIONS_CACHE.get(fileName);
+}
+
+async function readSchemaRevisions(config, fileName) {
+  const schemaFilePath = `${COMM_SCHEMA_FOLDER}/${fileName}`;
+  const revisions = [];
+  const seenRevisions = new Set();
+
+  // Walk the ESR branches from oldest to newest: a revision belongs to the
+  // oldest ESR branch which includes it.
+  for (const branch of config.historyBranches) {
+    const commit = await config.commSource.resolveBranch(branch);
+    const esrVersion = getEsrVersion(branch);
+    for (const revision of await config.commSource.getFileHistory(
+      commit,
+      schemaFilePath
+    )) {
+      if (seenRevisions.has(revision)) {
+        continue;
+      }
+      seenRevisions.add(revision);
+
+      // The history includes the revision which removed the file.
+      const content = await config.commSource.readFile(
+        revision,
+        schemaFilePath
+      );
+      if (content === null) {
+        continue;
+      }
+      const schema = processImports(jsonUtils.parse(content));
+      const paths = new Set();
+      await processSchema({
+        config,
+        value: schema,
+        collectPaths: paths,
+        revision,
+      });
+      const version = (
+        await config.commSource.readFile(revision, COMM_VERSION_FILE)
+      ).trim();
+      revisions.push({
+        revision,
+        version: getReportedVersion(config, version, esrVersion),
+        paths,
+      });
+    }
+  }
+  return revisions;
+}
+
+/**
+ * Find the version which first supported the specific API element, based on
+ * the history of its schema file.
  *
  * @param {Config} config - Global config data.
  * @param {string} fileName - Name of the Thunderbird schema file.
  * @param {array} searchPath - Path of the searched API element.
  *
- * @returns {string|boolean} First Thunderbird version supporting the specified
- *    API element, or false.
+ * @returns {Promise<string|boolean>} First Thunderbird version supporting the
+ *    specified API element, or false.
  */
 async function extractThunderbirdCompatData(config, fileName, searchPath) {
-  const schemaFilePath = `mail/components/extensions/schemas/${fileName}`;
-  let revisionList;
-
-  if (config.release.startsWith('esr')) {
-    revisionList = await buildEsrRevisionList(config, schemaFilePath);
-  } else {
-    // For daily/beta/release: single repo, same as before.
-    const repo = `comm-${config.release}`;
-    const rev_url = getHgRevisionLogPath(repo, schemaFilePath, config.commRev.rev);
-    const rev = jsonUtils.parse(
-      await readCachedUrl(rev_url, { temporary: config.commRev.temporary })
-    );
-    revisionList = [];
-    for (let i = rev.entries.length; i > 0; i--) {
-      revisionList.push({ node: rev.entries.at(i - 1).node, repo });
+  let versionAdded = false;
+  for (const { version, paths } of await getSchemaRevisions(config, fileName)) {
+    if (
+      hasPath(paths, searchPath) &&
+      (!versionAdded || compareVersion(version, versionAdded) < 0)
+    ) {
+      versionAdded = version;
     }
   }
-
-  const temporary = config.release.startsWith('esr') ? false : config.commRev.temporary;
-  for (const entry of revisionList) {
-    const result = await testRevision(
-      config,
-      entry.repo,
-      fileName,
-      searchPath,
-      entry.node,
-      temporary
-    );
-    if (result) {
-      const version_url = getHgFilePath(
-        entry.repo,
-        COMM_VERSION_FILE,
-        entry.node
-      );
-      return readCachedUrl(version_url, { temporary }).then((v) => {
-        const version = v.trim();
-        if (config.release.startsWith('esr')) {
-          // Check if the major version matches the ESR version (backport).
-          const major = Number(version.split('.')[0]);
-          if (major === entry.esrVersion) {
-            // Backported during ESR cycle, strip non-numeric suffix.
-            return version.replace(/[^0-9.].*/g, '');
-          }
-          // Feature rode the train, first available at this ESR.
-          return `${entry.esrVersion}.0`;
-        }
-        return version.split('.').at(0);
-      });
-    }
-  }
-
-  return false;
+  return versionAdded;
 }
