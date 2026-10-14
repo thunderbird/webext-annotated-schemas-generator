@@ -257,7 +257,8 @@ export async function validateUrl(url, placeholder = '') {
 }
 
 /**
- * Simple helper function to parse command line arguments.
+ * Simple helper function to parse command line arguments. Values are kept as
+ * they are (e.g. paths), except for the release name, which is lowercased.
  *
  * @returns {object} command line arguments and their values
  */
@@ -265,11 +266,13 @@ export function parseArgs(argv = process.argv.slice(2)) {
   const args = {};
   for (const arg of argv) {
     if (arg.startsWith('--')) {
-      const [key, value] = arg.slice(2).split('=');
+      // Split at the first "=" only, the value may include "=" as well.
+      const [key, ...rest] = arg.slice(2).split('=');
+      const value = rest.join('=');
       if (!value) {
         args[key] = true;
       } else {
-        args[key] = value.toLowerCase();
+        args[key] = key === 'release' ? value.toLowerCase() : value;
       }
     }
   }
