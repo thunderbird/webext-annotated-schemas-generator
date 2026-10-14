@@ -4,6 +4,29 @@ export const BUILD_HUB_URL = 'https://buildhub.moz.tools';
 
 export const COMM_GECKO_REV = '.gecko_rev.yml';
 
+// The Thunderbird repository. It is cloned (blobless) into GIT_CACHE_DIR, as
+// the history of the schema files is needed to generate compat data.
+export const COMM_GIT_URL =
+  'https://github.com/thunderbird/thunderbird-desktop.git';
+
+export const GIT_CACHE_DIR = 'git-cache/thunderbird-desktop.git';
+
+// The Firefox repository. Only a single revision is needed, which is read
+// through the GitHub API.
+export const MOZILLA_GITHUB_REPOSITORY = 'mozilla-firefox/firefox';
+
+export const GITHUB_API_URL = 'https://api.github.com';
+
+export const GITHUB_RAW_URL = 'https://raw.githubusercontent.com';
+
+// The oldest ESR branch available in the git repository. Its history includes
+// all older versions.
+export const OLDEST_ESR = 115;
+
+// ESR versions released before OLDEST_ESR, which no longer have a branch. Used
+// to map the version in which an element was added to the next ESR.
+export const HISTORICAL_ESR_VERSIONS = [60, 68, 78, 91, 102];
+
 export const COMM_SCHEMA_FOLDERS = [
   {
     folderPath: 'mail/components/extensions/schemas',
