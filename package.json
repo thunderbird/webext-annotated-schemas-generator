@@ -19,38 +19,25 @@
   ],
   "scripts": {
     "start": "node get_thunderbird_schema_files.js",
-    "lint": "eslint . --ext .js,.mjs",
-    "lint:fix": "eslint . --ext .js,.mjs --fix",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "lint:format": "npm run lint:fix && npm run format",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "prepare": "husky"
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@mdn/browser-compat-data": "^6.0.22",
-    "comment-json": "^4.2.4",
+    "jsonc-parser": "^3.3.1",
     "yaml": "^2.7.1"
   },
   "devDependencies": {
-    "@babel/eslint-parser": "^7.24.1",
-    "@babel/preset-env": "^7.24.1",
-    "eslint": "^8.57.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-node": "^11.1.0",
-    "husky": "^9.0.11",
-    "lint-staged": "^15.2.2",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
     "prettier": "^3.2.5"
   },
   "engines": {
     "node": ">=18"
-  },
-  "lint-staged": {
-    "*.{js,mjs}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,md,yml,yaml}": [
-      "prettier --write"
-    ]
   }
 }

@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { parse, printParseErrorCode } from 'jsonc-parser';
 
 /**
  * @typedef {import('./types.mjs').SchemaFile} SchemaFile
@@ -145,6 +146,26 @@ export function toCamelCase(str) {
 }
 
 /**
+ * Parse JSON with comments, as used by the schema and annotation files.
+ *
+ * @param {string} text - The JSON text.
+ * @param {string} [source] - Name of the source, used in error messages.
+ * @returns {any} The parsed value.
+ * @throws {Error} If the text is not valid JSON (comments are allowed).
+ */
+export function parseJson(text, source = 'JSON') {
+  const errors = [];
+  const value = parse(text, errors);
+  if (errors.length) {
+    const { error, offset } = errors[0];
+    throw new Error(
+      `Invalid ${source}: ${printParseErrorCode(error)} at offset ${offset}`
+    );
+  }
+  return value;
+}
+
+/**
  * Simple helper function to produce pretty JSON files.
  *
  * @param {string} filePath - The path to write the JSON to.
@@ -198,7 +219,7 @@ export async function validateUrl(url, placeholder = '') {
       );
       return false;
     }
-  } catch (error) {
+  } catch {
     console.log(
       ` - problematic URL found: network error - ${placeholder || '?'} - ${url}`
     );

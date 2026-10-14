@@ -9,13 +9,13 @@
  */
 
 import fs from 'node:fs/promises';
-import jsonUtils from 'comment-json';
 import os from 'node:os';
 import path from 'node:path';
 
 import {
   getJsonFiles,
   parseArgs,
+  parseJson,
   removeObsoleteCacheFiles,
   replaceUrlsInDescription,
   sortKeys,
@@ -156,11 +156,12 @@ async function generate() {
 
   console.log(` Validating used URLs ...`);
 
-  config.urlReplacements = jsonUtils.parse(
+  config.urlReplacements = parseJson(
     await fs.readFile(
       path.join(config.source, 'comm', COMM_URL_PLACEHOLDER_FILE),
       'utf-8'
-    )
+    ),
+    COMM_URL_PLACEHOLDER_FILE
   );
 
   for (const [placeholder, url] of Object.entries(config.urlReplacements)) {
@@ -662,8 +663,9 @@ async function mergeSchemasByRegistry(config) {
  */
 async function readSchemaFiles(owner, files) {
   for (const file of files) {
-    const schema = jsonUtils.parse(
-      await fs.readFile(path.join(file.path, file.name), 'utf-8')
+    const schema = parseJson(
+      await fs.readFile(path.join(file.path, file.name), 'utf-8'),
+      file.name
     );
     config.schemaInfos.push({ file, schema, owner });
   }
@@ -685,8 +687,9 @@ async function readAnnotationFiles(owners, config, files) {
         (e) => e.owner === owner && e.file.name === file.name
       );
       if (schemaInfo) {
-        const json = jsonUtils.parse(
-          await fs.readFile(path.join(file.path, file.name), 'utf-8')
+        const json = parseJson(
+          await fs.readFile(path.join(file.path, file.name), 'utf-8'),
+          file.name
         );
         await mergeAnnotations(config, schemaInfo.schema, json, file.path);
         break;

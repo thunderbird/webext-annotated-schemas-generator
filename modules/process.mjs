@@ -1,8 +1,8 @@
 import bcd from '@mdn/browser-compat-data' with { type: 'json' };
-import jsonUtils from 'comment-json';
 
 import {
   validateUrl,
+  parseJson,
   replaceUrlsInDescription,
   fixMalformedClosingTags,
   extractDlDescriptions,
@@ -67,7 +67,7 @@ export function processImports(schema, value = schema) {
       let imported = getNestedIdOrNamespace(schema, id);
       if (imported) {
         // Do not import top level manifest limits.
-        imported = jsonUtils.parse(JSON.stringify(imported));
+        imported = structuredClone(imported);
         delete imported.min_manifest_version;
         delete imported.max_manifest_version;
         // Do not import namespace name and id.
@@ -349,9 +349,7 @@ export async function processSchema({
   value = await Object.keys(value).reduce(async (accumulatorPromise, key) => {
     const accumulator = await accumulatorPromise;
     processLogger('property', pathElements, key);
-    let v = value[key];
-
-    v = await processSchema({
+    let v = await processSchema({
       config,
       value: value[key],
       schemaInfo,
@@ -780,7 +778,7 @@ async function readSchemaRevisions(config, fileName) {
     if (content === null) {
       continue;
     }
-    const schema = processImports(jsonUtils.parse(content));
+    const schema = processImports(parseJson(content, schemaFilePath));
     const paths = new Set();
     await processSchema({
       config,

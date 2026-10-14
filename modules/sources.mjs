@@ -147,7 +147,9 @@ export class LocalGitSource {
         ref,
       ]);
     } catch (ex) {
-      throw new Error(`Fetching ${ref} of ${url} failed: ${ex.stderr || ex}`);
+      throw new Error(`Fetching ${ref} of ${url} failed: ${ex.stderr || ex}`, {
+        cause: ex,
+      });
     }
     const commit = (
       await source.#git(['rev-parse', 'FETCH_HEAD^{commit}'])
