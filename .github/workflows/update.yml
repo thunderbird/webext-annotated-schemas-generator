@@ -40,7 +40,7 @@ jobs:
           exit 1
 
       - name: Checkout generator default branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up SSH
         run: |
@@ -80,13 +80,13 @@ jobs:
       # The generator updates it, or clones it again if it is missing or
       # invalid.
       - name: Restore the git cache (if available)
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: git-cache
           key: schema-cache
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
 
@@ -111,7 +111,7 @@ jobs:
           gh cache delete schema-cache || echo "No cache to delete."
 
       - name: Save the git cache
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: git-cache
           key: schema-cache
