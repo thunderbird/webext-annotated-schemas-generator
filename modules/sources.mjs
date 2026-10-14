@@ -48,34 +48,70 @@ export class LocalGitSource {
    */
   static async open(url, dir) {
     const source = new LocalGitSource(dir);
-    if (await source.#isCloneOf(url)) {
-      try {
-        console.log(` - updating the git cache in ${dir} ...`);
-        await source.#git(['fetch', '--prune', '--no-tags', 'origin']);
-        return source;
-      } catch (ex) {
-        console.warn(` !! Updating the git cache failed: ${ex.message}`);
-      }
+    if (!(await source.#update(url))) {
+      await source.#clone(url);
     }
+    await source.#writeCommitGraph();
+    return source;
+  }
 
-    console.log(` - cloning ${url} into ${dir} ...`);
-    await fs.rm(dir, { recursive: true, force: true });
-    await fs.mkdir(path.dirname(dir), { recursive: true });
+  /**
+   * Update a valid clone of the given repository.
+   *
+   * @returns {Promise<boolean>} false if there is no valid clone or the update
+   *    failed
+   */
+  async #update(url) {
+    if (!(await this.#isCloneOf(url))) {
+      return false;
+    }
+    try {
+      console.log(` - updating the git cache in ${this.dir} ...`);
+      await this.#git(['fetch', '--prune', '--no-tags', 'origin']);
+      return true;
+    } catch (ex) {
+      console.warn(` !! Updating the git cache failed: ${ex.message}`);
+      return false;
+    }
+  }
+
+  async #clone(url) {
+    console.log(` - cloning ${url} into ${this.dir} ...`);
+    await fs.rm(this.dir, { recursive: true, force: true });
+    await fs.mkdir(path.dirname(this.dir), { recursive: true });
     await execFileAsync('git', [
       'clone',
       '--bare',
       '--filter=blob:none',
       '--no-tags',
       url,
-      dir,
+      this.dir,
     ]);
     // A bare clone has no fetch refspec, branches are updated in place.
-    await source.#git([
+    await this.#git([
       'config',
       'remote.origin.fetch',
       '+refs/heads/*:refs/heads/*',
     ]);
-    return source;
+  }
+
+  /**
+   * Write the commit-graph with changed-path filters, which speeds up the file
+   * histories (see getFileHistory()) considerably. An existing commit-graph is
+   * reused, so updating it after a fetch is fast. Without it, the cache is
+   * still valid, just slower.
+   */
+  async #writeCommitGraph() {
+    try {
+      await this.#git([
+        'commit-graph',
+        'write',
+        '--reachable',
+        '--changed-paths',
+      ]);
+    } catch (ex) {
+      console.warn(` !! Writing the commit-graph failed: ${ex.message}`);
+    }
   }
 
   /**

@@ -66,7 +66,7 @@ node get_thunderbird_schema_files.js [options]
 
 ## 📄 Notes
 
-The `version_added` compatibility data is generated from the history of the Thunderbird schema files. The script therefore keeps a blobless clone of the [Thunderbird repository](https://github.com/thunderbird/thunderbird-desktop) in the `git-cache/` folder (about 160 MB, created in about 30 seconds on the first run). Later runs only fetch new commits. The folder can be deleted at any time, it is recreated as needed. The script requires `git`.
+The `version_added` compatibility data is generated from the history of the Thunderbird schema files. The script therefore keeps a blobless clone of the [Thunderbird repository](https://github.com/thunderbird/thunderbird-desktop) in the `git-cache/` folder (about 175 MB including a commit-graph which speeds up the history lookups, created in about 40 seconds on the first run). Later runs only fetch new commits. The folder can be deleted at any time, it is recreated as needed. The script requires `git`.
 
 From the [Firefox repository](https://github.com/mozilla-firefox/firefox) only the needed revision is fetched, without its history (about 20 MB per run, not cached).
 
