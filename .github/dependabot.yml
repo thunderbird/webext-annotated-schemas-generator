@@ -1,0 +1,31 @@
+# Keep the dependencies up to date.
+# https://docs.github.com/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # Updates of the browser-compat-data change the generated annotations,
+      # they get their own pull request to be reviewed on their own.
+      browser-compat-data:
+        patterns:
+          - '@mdn/browser-compat-data'
+      # Everything else (the toolchain and the other dependencies) in a single
+      # pull request.
+      other:
+        patterns:
+          - '*'
+        exclude-patterns:
+          - '@mdn/browser-compat-data'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - '*'
