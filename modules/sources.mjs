@@ -3,10 +3,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+import { getSideParents } from './commit_graph.mjs';
+
 // Based on the sources of the policy-templates generator:
 // https://github.com/thunderbird/policy-templates/blob/main/generator/modules/sources.mjs
 
 const execFileAsync = promisify(execFile);
+
+// The main branch of the repositories.
+const MAIN_BRANCH = 'main';
 
 /**
  * Read files and their history from a local bare git repository, using the
@@ -16,6 +21,7 @@ const execFileAsync = promisify(execFile);
 export class LocalGitSource {
   #catFile = null;
   #readCache = new Map();
+  #historyStarts = new Map();
 
   /**
    * @param {string} dir - Path to the local bare git repository.
@@ -239,10 +245,41 @@ export class LocalGitSource {
   }
 
   /**
+   * Get the starting points of the history of the given refs: the refs and the
+   * heads of the lines merged into their history from outside of main (see
+   * commit_graph.mjs). Computed once per set of refs.
+   *
+   * @param {string[]} refs
+   * @returns {Promise<string[]>}
+   */
+  #getHistoryStarts(refs) {
+    const key = refs.join(' ');
+    if (!this.#historyStarts.has(key)) {
+      this.#historyStarts.set(
+        key,
+        (async () => {
+          const starts = new Set(refs);
+          for (const ref of refs) {
+            for (const parent of await getSideParents(
+              (args) => this.#git(args),
+              ref,
+              `refs/heads/${MAIN_BRANCH}`
+            )) {
+              starts.add(parent);
+            }
+          }
+          return [...starts];
+        })()
+      );
+    }
+    return this.#historyStarts.get(key);
+  }
+
+  /**
    * Get the commits in the history of the given refs which modified the given
-   * file, newest first. The full history is used: by default, git only follows
-   * one parent of a merge, which hides changes which reached the branch
-   * through the other parent (e.g. uplifts to beta merged into release).
+   * file, including the lines merged in from outside of main (see
+   * commit_graph.mjs). A single walk from all starting points returns the
+   * union of their histories.
    *
    * @param {string[]} refs - Refs or commits, the union of their histories is
    *    returned.
@@ -252,8 +289,7 @@ export class LocalGitSource {
   async getFileHistory(refs, filePath) {
     const log = await this.#git([
       'rev-list',
-      '--full-history',
-      ...refs,
+      ...(await this.#getHistoryStarts(refs)),
       '--',
       filePath,
     ]);
@@ -281,8 +317,9 @@ export class LocalGitSource {
   }
 
   /**
-   * Fetch all revisions of the given files in the full history of the given
-   * refs, which are not yet available locally, with a single request.
+   * Fetch all revisions of the given files in the history of the given refs
+   * (see getFileHistory()), which are not yet available locally, with a single
+   * request.
    *
    * @param {string[]} refs - Refs or commits.
    * @param {string[]} paths - Paths of files or folders.
@@ -292,8 +329,7 @@ export class LocalGitSource {
       'rev-list',
       '--objects',
       '--missing=print',
-      '--full-history',
-      ...refs,
+      ...(await this.#getHistoryStarts(refs)),
       '--',
       ...paths,
     ]);
