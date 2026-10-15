@@ -3,13 +3,13 @@ import yaml from 'yaml';
 import { COMM_GECKO_REV } from './constants.mjs';
 
 /**
- * @typedef {import('./sources.mjs').LocalGitSource} LocalGitSource
+ * @typedef {import('./common/cached_clone.mjs').HistorySource} HistorySource
  */
 
 /**
  * Read the GECKO_REV file of a COMM revision to get the matching MOZILLA ref.
  *
- * @param {LocalGitSource} commSource
+ * @param {HistorySource} commSource
  * @param {string} commRev - The COMM revision.
  *
  * @returns {Promise<string>} The MOZILLA ref, a tag or "main".

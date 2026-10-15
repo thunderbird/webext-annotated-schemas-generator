@@ -23,7 +23,7 @@
  *    (including historical ESRs without a branch), only for ESR releases
  * @property {string} [commRev] - Comm repository revision (git commit)
  * @property {string} [mozillaRev] - Mozilla repository revision (git commit)
- * @property {import('./sources.mjs').LocalGitSource} [commSource] - The local
+ * @property {import('./common/cached_clone.mjs').HistorySource} [commSource] - The local
  *    clone of the comm repository
  * @property {Object} [urlReplacements] - URL placeholder replacements
  * @property {SchemaInfo[]} [schemaInfos] - Array of processed schema information

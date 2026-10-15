@@ -32,7 +32,7 @@ so the policy would be reported as new in 92, although it shipped in 91.0.
 The lines merged in this way are not part of `main`. Their heads are the
 parents (besides the first) of the merges on the branch which are not part of
 `main`: the **side parents** (`getSideParents()` in
-[modules/commit_graph.mjs](modules/commit_graph.mjs)). The complete history of
+[modules/common/side_parents.mjs](modules/common/side_parents.mjs)). The complete history of
 a file is the **union of the plain histories** from the branch and from each
 side parent. Merges whose content equals one of their parents are not needed:
 they add no content of their own and never have a lower version.
@@ -44,9 +44,28 @@ release (`HISTORICAL_ESR_TAGS` in [modules/constants.mjs](modules/constants.mjs)
 
 ## Shared with policy-templates, and where it differs
 
-Both generators use the same concept, and both have a `getSideParents()` with
-the same logic. They differ in where the commit graph and the plain histories
-come from:
+Both generators use the same concept and the same code. The `common` folder
+(`modules/common/` here, `generator/modules/common/` in policy-templates)
+holds the code shared between the two repositories. There is no shared
+package: the copies are kept identical by hand, check them with
+`diff -r webext-annotated-schemas-generator/modules/common policy-templates/generator/modules/common`.
+
+| file                 | contents                                                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `side_parents.mjs`   | `getSideParents()`, the concept above                                                                                                                                                 |
+| `cached_clone.mjs`   | what both kinds of clones share: open, check and update the cached clone, commit-graph, branches and refs, the starting points of a history, and the common interface `HistorySource` |
+| `blobless_clone.mjs` | `BloblessClone`: histories and files read locally; `fetchSingleRevision()` for a single revision of a large repository                                                                |
+| `treeless_clone.mjs` | `TreelessClone`: histories from the GitHub API, files downloaded; the cache and the download are passed in by the generator                                                           |
+
+Both clones have the same interface (`HistorySource` in `cached_clone.mjs`),
+so a generator switches from one to the other by changing only the call to
+open the repository: `BloblessClone.open(url, dir)` here,
+`TreelessClone.open(url, dir, { cache, readUrl })` in policy-templates. The
+tests of the shared code are in policy-templates
+(`generator/test/common.test.mjs`), as this repository has no test framework.
+
+The generators differ in where the commit graph and the plain histories come
+from:
 
 |                     | this generator                                                                                        | policy-templates                                                                |
 | ------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -116,4 +135,4 @@ such revisions, plain `git log` did not.
   since Thunderbird 68).
 - To check a file, compare
   `git rev-list --no-merges --full-history <refs> -- <file>` with the history
-  returned by `LocalGitSource.getFileHistory()` on the git cache.
+  returned by `BloblessClone.getFileHistory()` on the git cache.

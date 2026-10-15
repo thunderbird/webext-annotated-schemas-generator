@@ -4,7 +4,7 @@ import { HISTORICAL_ESR_TAGS, OLDEST_ESR } from './constants.mjs';
 // https://github.com/thunderbird/policy-templates/blob/main/generator/modules/branches.mjs
 
 /**
- * @typedef {import('./sources.mjs').LocalGitSource} LocalGitSource
+ * @typedef {import('./common/cached_clone.mjs').HistorySource} HistorySource
  */
 
 /**
@@ -22,7 +22,7 @@ export function getEsrVersion(branch) {
  * Get the ESR branches of the repository from OLDEST_ESR on, sorted by
  * version (oldest first).
  *
- * @param {LocalGitSource} source
+ * @param {HistorySource} source
  * @returns {Promise<string[]>} e.g. ["esr115", "esr128", "esr140", "esr153"]
  */
 export async function getEsrBranches(source) {
@@ -34,7 +34,7 @@ export async function getEsrBranches(source) {
 /**
  * Get the branch of the repository for a release name.
  *
- * @param {LocalGitSource} source
+ * @param {HistorySource} source
  * @param {string} release - "esr" (the newest ESR branch), "esr<N>", "release",
  *    "beta" or "central" (Daily).
  * @returns {Promise<string>} the branch, e.g. "esr153" or "main"
@@ -56,7 +56,7 @@ export async function getReleaseBranch(source, release) {
 /**
  * Get the ESR branches from OLDEST_ESR up to the given ESR branch.
  *
- * @param {LocalGitSource} source
+ * @param {HistorySource} source
  * @param {string} branch - e.g. "esr153"
  * @returns {Promise<string[]>} e.g. ["esr115", "esr128", "esr140", "esr153"]
  */
@@ -71,7 +71,7 @@ async function getEsrBranchesUpTo(source, branch) {
  * (see HISTORICAL_ESR_TAGS) and the ESR branches. Otherwise, the branch
  * itself.
  *
- * @param {LocalGitSource} source
+ * @param {HistorySource} source
  * @param {string} branch - e.g. "esr153" or "beta"
  * @returns {Promise<string[]>} e.g. ["refs/tags/THUNDERBIRD_60_9_1_RELEASE",
  *    ..., "refs/heads/esr115", ..., "refs/heads/esr153"]
@@ -90,7 +90,7 @@ export async function getHistoryRefs(source, branch) {
  * Get all ESR versions up to the given ESR branch, including the historical
  * ESR versions without a branch.
  *
- * @param {LocalGitSource} source
+ * @param {HistorySource} source
  * @param {string} branch - e.g. "esr153"
  * @returns {Promise<number[]>} e.g. [60, 68, 78, 91, 102, 115, 128, 140, 153]
  */

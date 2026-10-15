@@ -27,7 +27,10 @@ import {
 
 import { getMozillaRefFromGeckoRevFile } from './modules/mozilla.mjs';
 
-import { LocalGitSource } from './modules/sources.mjs';
+import {
+  BloblessClone,
+  fetchSingleRevision,
+} from './modules/common/blobless_clone.mjs';
 
 import {
   getEsrVersions,
@@ -53,6 +56,7 @@ import { processImports, processSchema } from './modules/process.mjs';
 
 /**
  * @typedef {import('./modules/types.mjs').SchemaFile} SchemaFile
+ * @typedef {import('./modules/common/cached_clone.mjs').HistorySource} HistorySource
  */
 
 // The config object is used as a global state, not limited to passed in command
@@ -86,7 +90,7 @@ async function main() {
   // The history of the Thunderbird repository is needed for the compat data,
   // it is cloned (or updated) into a local cache.
   await removeObsoleteCacheFiles();
-  config.commSource = await LocalGitSource.open(COMM_GIT_URL, GIT_CACHE_DIR);
+  config.commSource = await BloblessClone.open(COMM_GIT_URL, GIT_CACHE_DIR);
   try {
     await generate();
   } finally {
@@ -131,7 +135,7 @@ async function generate() {
   if (!config['no-compat-data']) {
     console.log(` Downloading the history of the schema files ...`);
     // The refs whose history is used for the compat data. Refs which are not
-    // updated by LocalGitSource.open() (the tags of historical ESRs) are
+    // updated by BloblessClone.open() (the tags of historical ESRs) are
     // fetched once.
     config.historyRefs = await getHistoryRefs(config.commSource, config.branch);
     await config.commSource.fetchRefs(config.historyRefs);
@@ -384,7 +388,7 @@ async function generate() {
 /**
  * Copy files and folders of a revision of a repository into a local folder.
  *
- * @param {LocalGitSource} source - The repository.
+ * @param {HistorySource} source - The repository.
  * @param {string} commit - The revision.
  * @param {string[]} folders - Paths of folders to copy (including sub folders).
  * @param {string[]} files - Paths of single files to copy.
@@ -440,7 +444,7 @@ async function downloadFilesFromMozilla() {
     config.commSource,
     config.commRev
   );
-  const { source, commit } = await LocalGitSource.fetchRef(
+  const { source, commit } = await fetchSingleRevision(
     MOZILLA_GIT_URL,
     mozillaRef,
     path.join(config.tempFolder, 'mozilla.git')
