@@ -820,12 +820,22 @@ async function readSchemaRevisions(config, fileName) {
     config.historyRefs,
     schemaFilePath
   )) {
-    // The history includes the revision which removed the file.
+    // Skip revisions which removed the file, or whose file is broken (e.g.
+    // committed with conflict markers and fixed later, as happened in
+    // Firefox): they were never a valid schema.
     const content = await config.commSource.readFile(revision, schemaFilePath);
     if (content === null) {
       continue;
     }
-    const schema = processImports(parseJson(content, schemaFilePath));
+    let schema;
+    try {
+      schema = processImports(parseJson(content, schemaFilePath));
+    } catch (ex) {
+      console.warn(
+        ` !! Skipping the invalid ${fileName} of revision ${revision}: ${ex.message}`
+      );
+      continue;
+    }
     const paths = new Set();
     await processSchema({
       config,
