@@ -70,7 +70,7 @@ The `version_added` compatibility data is generated from the history of the Thun
 
 For ESR releases, the history of all ESRs up to the requested one is used, to report backports during an ESR cycle (e.g. `128.2.0`). ESRs before 115 have no branch in the git repository, their history is read from the tag of their last release (see `HISTORICAL_ESR_TAGS`). How the complete history is read, and how this relates to the policy-templates generator, is explained in [HISTORY.md](HISTORY.md).
 
-From the [Firefox repository](https://github.com/mozilla-firefox/firefox) only the needed revision is fetched, without its history (about 20 MB per run, not cached).
+From the [Firefox repository](https://github.com/mozilla-firefox/firefox) only the needed revision is fetched, without its history (about 20 MB per run, not cached). The revision is the `GECKO_HEAD_REF` (tag or `default`) of `.gecko_rev.yml` in the Thunderbird repository. If a branch pins it by `GECKO_HEAD_REV` only (a commented out `GECKO_HEAD_REF` is ignored), the mercurial revision is mapped to its git commit with the [Lando](https://lando.moz.tools) API.
 
 ---
 

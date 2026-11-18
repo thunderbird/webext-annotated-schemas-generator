@@ -13,6 +13,10 @@ export const GIT_CACHE_DIR = 'git-cache/thunderbird-desktop.git';
 // into the temp folder.
 export const MOZILLA_GIT_URL = 'https://github.com/mozilla-firefox/firefox.git';
 
+// Lando maps mercurial revisions of the Firefox repository to git commits. It
+// is needed if COMM pins MOZILLA by its mercurial revision only.
+export const LANDO_HG2GIT_URL = 'https://lando.moz.tools/api/hg2git/firefox';
+
 // The oldest ESR branch available in the git repository. Its history includes
 // all older versions.
 export const OLDEST_ESR = 115;
